@@ -1,0 +1,11 @@
+{
+  "name": "visual-archive",
+  "private": true,
+  "version": "1.0.0",
+  "description": "THE VISUAL ARCHIVE — full-stack app (Vite React frontend in frontend/, Express backend in backend/, static build output in public/app/)",
+  "scripts": {
+    "build": "npm --prefix frontend run build",
+    "dev:frontend": "npm --prefix frontend run dev",
+    "start": "node server.js"
+  }
+}
