@@ -33,7 +33,6 @@ tailwind.config={theme:{extend:{
 <script crossorigin="anonymous" src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
 <script crossorigin="anonymous" src="https://unpkg.com/framer-motion@11.11.17/dist/framer-motion.js"></script>
 <script crossorigin="anonymous" src="https://unpkg.com/lenis@1.1.18/dist/lenis.min.js"></script>
-<script crossorigin="anonymous" src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script crossorigin="anonymous" src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
 <script>
 window.__VA_ERRORS=[];
@@ -122,11 +121,6 @@ const FM=window.Motion||{};
 const {motion,AnimatePresence,useScroll,useTransform,useMotionValueEvent,useAnimationControls,useMotionValue,useSpring}=FM;
 const REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
 const FINE=window.matchMedia('(pointer: fine)').matches;
-const SUPABASE_URL='https://orstxiasufevqdstbjtv.supabase.co';
-const SUPABASE_PUBLISHABLE_KEY='sb_publishable_2eg899AntRsbnd8znnOFrw_w0p6C66I';
-const supabaseClient=window.supabase&&window.supabase.createClient
-  ?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY)
-  :null;
 const clampN=(v,a,b)=>Math.min(b,Math.max(a,v));
 const lerp=(a,b,t)=>a+(b-a)*t;
 const store={
@@ -166,13 +160,6 @@ const DEV={
   linkedin:'https://www.linkedin.com/in/tejash-chauhan-5a30bb35a',
   insta:'https://www.instagram.com/tejxash',
   handle:'@TEJXASH'
-};
-const emailOk=v=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v||'').trim());
-const authRedirectUrl=()=>location.origin+location.pathname;
-const memberName=session=>{
-  const user=session&&session.user;
-  const data=(user&&user.user_metadata)||{};
-  return data.full_name||data.name||data.user_name||String((user&&user.email)||'MEMBER').split('@')[0];
 };
 
 function VAMark({className='',bg=true,mark='#F7F5F0',field='#FC4C13',gap=null}){
@@ -286,7 +273,6 @@ const GENRES=[
 ];
 const QUICK=['FOG','NEON','DUNES','HARBOUR','PORTRAIT','BRUTALISM','WAVES','MARKET'];
 const HERO_QUERIES=['golden hour silhouette','fog mountain ridge','neon street rain','portrait window light','desert dunes shadow','harbour boats mist'];
-const LOGIN_QUERIES=['darkroom enlarger','film negatives light','neon street rain','fog mountain ridge'];
 const SECTIONS=[
  {id:'search',n:'01',name:'THE SEARCH'},
  {id:'genres',n:'02',name:'GENRES'},
@@ -487,8 +473,8 @@ function BackTop(){
   return <AnimatePresence>{show&&<motion.button initial={{y:50,opacity:0}} animate={{y:0,opacity:1}} exit={{y:50,opacity:0}} onClick={()=>{SND.click();curtainTo(0)}} data-hover aria-label="Back to top" className="fixed bottom-6 right-5 z-[70] rounded-full glass border border-bone/25 text-bone font-mono text-[10px] tracking-[.3em] px-5 py-3 min-h-[44px] hover:border-vermilion hover:text-vermilion transition-colors">TOP ↑</motion.button>}</AnimatePresence>;
 }
 
-/* ================= NAV (with member chip / sign-in) ================= */
-function Nav({current,onRandom,session,onSignIn,onSignOut}){
+/* ================= NAV ================= */
+function Nav({current,onRandom}){
   const [open,setOpen]=useState(false);const [scrolled,setScrolled]=useState(false);
   const [ripples,setRipples]=useState([]);
   const tube=useRef(null);const light=useRef(null);const rid=useRef(0);
@@ -520,10 +506,6 @@ function Nav({current,onRandom,session,onSignIn,onSignOut}){
       if(curtainSweep)curtainSweep();
     },420);
   },[]);
-  const members=useCallback(()=>{
-    setOpen(false);
-    setTimeout(()=>{if(session){onSignOut()}else{onSignIn()}},320);
-  },[session,onSignIn,onSignOut]);
   const onMove=e=>{
     const el=tube.current,lg=light.current;if(!el||!lg)return;
     const r=el.getBoundingClientRect();
@@ -537,7 +519,6 @@ function Nav({current,onRandom,session,onSignIn,onSignOut}){
     setRipples(p=>[...p.slice(-3),{id:id,x:e.clientX-r.left,y:e.clientY-r.top}]);
   };
   const waterStyle=REDUCED?undefined:{rotate:sTilt,scaleY:sSy,scaleX:sSx,y:sDy};
-  const firstName=session?String(memberName(session)||'MEMBER').split(' ')[0].toUpperCase().slice(0,10):'';
   return <>
     <div className="fixed top-4 inset-x-0 z-[85] pp pointer-events-none" style={{paddingTop:'env(safe-area-inset-top,0px)'}}>
       <motion.div ref={tube} onPointerMove={onMove} onPointerDown={onDown} style={waterStyle}
@@ -563,13 +544,6 @@ function Nav({current,onRandom,session,onSignIn,onSignOut}){
           <span className="font-mono text-[10px] tracking-[.28em] text-bone/75 tnum">{current.n} / {current.name}</span>
         </div>
         <div className="relative flex shrink-0 items-center gap-1 md:gap-2">
-          {session?(
-            <button onClick={onSignOut} data-hover title="Sign out" aria-label={'Sign out '+firstName} className="hidden sm:flex items-center gap-2 rounded-full px-3 py-3 min-h-[44px] font-mono text-[10px] tracking-[.25em] text-bone/80 hover:text-vermilion hover:bg-bone/10 transition-colors">
-              <span className="w-1.5 h-1.5 rotate-45 bg-vermilion" aria-hidden="true"/>◆ {firstName}
-            </button>
-          ):(
-            <button onClick={onSignIn} data-hover aria-label="Sign in" className="hidden sm:flex rounded-full px-3 py-3 min-h-[44px] font-mono text-[10px] tracking-[.25em] text-bone/80 hover:text-vermilion hover:bg-bone/10 transition-colors">SIGN IN</button>
-          )}
           <button onClick={()=>{SND.shutter();onRandom()}} data-hover aria-label="Random plate" title="Random plate" className="hidden md:block rounded-full px-3 py-3 min-h-[44px] font-mono text-[12px] text-bone/75 hover:text-vermilion hover:bg-bone/10 transition-colors">⚄</button>
           <button onClick={()=>{setOpen(!open);if(open){SND.close()}else{SND.open()}}} aria-expanded={open} data-hover className="group flex items-center gap-2 sm:gap-3 rounded-full pl-2 sm:pl-3 pr-3 sm:pr-4 py-3 min-h-[44px] hover:bg-bone/10 transition-colors">
             <span className="hidden min-[380px]:block font-mono text-[11px] tracking-[.3em] text-bone group-hover:text-vermilion transition-colors">{open?'CLOSE':'MENU'}</span>
@@ -608,14 +582,6 @@ function Nav({current,onRandom,session,onSignIn,onSignOut}){
             <span className="font-display uppercase text-[clamp(2rem,8vw,5rem)] leading-none text-cod group-hover:text-white group-hover:translate-x-3 transition-all duration-300">{s.name}</span>
             <span className="ml-auto font-mono text-[10px] tracking-[.25em] text-cod/50 hidden sm:block">↗</span>
           </motion.button>))}
-        <motion.button onClick={members}
-          initial={{y:70,opacity:0}} animate={{y:0,opacity:1}}
-          transition={{delay:.35+6*.07,duration:.65,ease:[.16,1,.3,1]}}
-          data-hover className="group flex items-baseline gap-4 md:gap-8 px-[var(--pad)] py-2 md:py-3 text-left min-h-[44px] hover:bg-vermilion transition-colors">
-          <span className="font-mono text-[11px] tracking-[.25em] text-cod/60 w-8">◆</span>
-          <span className="font-display uppercase text-[clamp(1.6rem,6vw,3.4rem)] leading-none text-vermilion group-hover:text-cod group-hover:translate-x-3 transition-all duration-300">{session?'SIGN OUT':'MEMBERS — SIGN IN'}</span>
-          <span className="ml-auto font-mono text-[10px] tracking-[.25em] text-cod/50 hidden sm:block">{session?firstName:'↗'}</span>
-        </motion.button>
       </div>
       <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.85,duration:.6}} className="pb-8 pt-4 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[11px] tracking-[.2em] text-cod/70 border-t border-cod/15">
         <span>IMAGES: WIKIMEDIA COMMONS + OPENVERSE — CC / PUBLIC DOMAIN</span>
@@ -623,287 +589,6 @@ function Nav({current,onRandom,session,onSignIn,onSignOut}){
       </motion.div>
     </motion.nav>}</AnimatePresence>
   </>;
-}
-
-/* ================= LOGIN VIEW (in-file, #login) ================= */
-function LoginBackdrop(){
-  const [plates,setPlates]=useState([]);
-  const [idx,setIdx]=useState(0);
-  useEffect(()=>{let on=true;LOGIN_QUERIES.forEach(q=>fetchPlate(q).then(pl=>{if(on)setPlates(p=>p.concat([pl]))}).catch(()=>{}));return()=>{on=false}},[]);
-  useEffect(()=>{
-    if(REDUCED||plates.length<2)return;
-    const t=setInterval(()=>setIdx(i=>(i+1)%plates.length),3200);
-    return()=>clearInterval(t);
-  },[plates.length]);
-  const active=plates[idx];
-  return <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
-    {plates.map((p,i)=>(
-      <motion.img key={p.id} src={p.thumb} alt=""
-        initial={{opacity:0}}
-        animate={{opacity:i===idx?0.5:0,scale:i===idx?1.06:1}}
-        transition={{opacity:{duration:1,ease:'easeInOut'},scale:{duration:3.2,ease:'linear'}}}
-        className="duo absolute inset-0 h-full w-full object-cover"/>
-    ))}
-    <div className="absolute inset-0 bg-ink/45"/>
-    <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/25 to-ink/70"/>
-    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-ink lg:to-ink/95"/>
-    {active&&<p className="absolute bottom-3 left-0 right-0 pp font-mono text-[8px] tracking-[.22em] text-bone/60 truncate">BACKDROP — © {active.creator} · {active.license}</p>}
-  </div>;
-}
-function LoginField(props){
-  return <div className="relative">
-    <label htmlFor={props.id} className="block font-mono text-[10px] tracking-[.28em] text-cod/60 pb-2">{props.label}</label>
-    <div className="relative">
-      <input id={props.id} type={props.type||'text'} value={props.value} onChange={props.onChange}
-        onKeyUp={props.onKeyUp} autoComplete={props.autoComplete||'off'} placeholder={props.placeholder||''}
-        className={'w-full bg-transparent border-b-2 font-mono text-sm text-cod placeholder-cod/35 outline-none pb-3 pt-1 transition-colors '+(props.error?'border-vermilion':'border-cod/25 focus:border-vermilion')+(props.padRight?' pr-16':'')}/>
-      {props.trailing}
-    </div>
-    {props.error&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion pt-2">{props.error}</p>}
-    {props.hint&&!props.error&&<p className="font-mono text-[9px] tracking-[.2em] text-cod/45 pt-2">{props.hint}</p>}
-  </div>;
-}
-function strengthScore(v){
-  let s=0;
-  if(v&&v.length>=6)s++;
-  if(v&&v.length>=10)s++;
-  if(v&&/[A-Z]/.test(v)&&/[a-z]/.test(v))s++;
-  if(v&&/[0-9]/.test(v)&&/[^A-Za-z0-9]/.test(v))s++;
-  return s;
-}
-const STRENGTH_LABEL=['TOO SHORT','WEAK','FAIR','GOOD','STRONG'];
-function LoginCard({onGranted,onExit}){
-  const [mode,setMode]=useState('in');
-  const [name,setName]=useState('');
-  const [email,setEmail]=useState('');
-  const [pass,setPass]=useState('');
-  const [showPass,setShowPass]=useState(false);
-  const [caps,setCaps]=useState(false);
-  const [terms,setTerms]=useState(false);
-  const [errors,setErrors]=useState({});
-  const [shake,setShake]=useState(false);
-  const [loading,setLoading]=useState(false);
-  const [granted,setGranted]=useState(false);
-  const [resetSent,setResetSent]=useState(false);
-  const [note,setNote]=useState('');
-  const [ripples,setRipples]=useState([]);
-  const rid=useRef(0);
-  const wrap=useRef(null);
-  const rx=useMotionValue(0),ry=useMotionValue(0);
-  const srx=useSpring(rx,{stiffness:120,damping:16});
-  const sry=useSpring(ry,{stiffness:120,damping:16});
-  const score=strengthScore(pass);
-  const onMove=useCallback(e=>{
-    if(REDUCED||!FINE)return;
-    const el=wrap.current;if(!el)return;
-    const r=el.getBoundingClientRect();
-    ry.set(clampN(((e.clientX-r.left)/r.width-0.5)*2,-1,1)*2.2);
-    rx.set(clampN(((e.clientY-r.top)/r.height-0.5)*2,-1,1)*-2.2);
-  },[]);
-  const onLeave=useCallback(()=>{rx.set(0);ry.set(0)},[]);
-  const fail=useCallback(errs=>{
-    setErrors(errs);setShake(true);setNote('');
-    setTimeout(()=>setShake(false),520);
-  },[]);
-  const finish=useCallback(session=>{
-    setGranted(true);
-    setTimeout(()=>{onGranted(session)},950);
-  },[onGranted]);
-  const submitIn=useCallback(e=>{
-    e.preventDefault();
-    const errs={};
-    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
-    if(pass.length<6)errs.pass='MIN 6 CHARACTERS';
-    if(Object.keys(errs).length){fail(errs);return}
-    setErrors({});setLoading(true);setNote('');
-    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
-    supabaseClient.auth.signInWithPassword({email:email.trim(),password:pass}).then(({data,error})=>{
-      setLoading(false);
-      if(error){setNote(error.message.toUpperCase());return}
-      if(data.session)finish(data.session);
-    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
-  },[email,pass,fail,finish]);
-  const submitUp=useCallback(e=>{
-    e.preventDefault();
-    const errs={};
-    if(name.trim().length<2)errs.name='TELL US YOUR NAME';
-    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
-    if(pass.length<6)errs.pass='MIN 6 CHARACTERS';
-    if(!terms)errs.terms='ACCEPT THE HOUSE RULES';
-    if(Object.keys(errs).length){fail(errs);return}
-    setErrors({});setLoading(true);setNote('');
-    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
-    supabaseClient.auth.signUp({email:email.trim(),password:pass,options:{data:{name:name.trim()},emailRedirectTo:authRedirectUrl()}}).then(({data,error})=>{
-      setLoading(false);
-      if(error){setNote(error.message.toUpperCase());return}
-      if(data.session){finish(data.session);return}
-      setNote('CHECK YOUR EMAIL TO CONFIRM YOUR ACCOUNT');
-    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
-  },[name,email,pass,terms,fail,finish]);
-  const submitReset=useCallback(e=>{
-    e.preventDefault();
-    const errs={};
-    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
-    if(Object.keys(errs).length){fail(errs);return}
-    setErrors({});setLoading(true);
-    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
-    supabaseClient.auth.resetPasswordForEmail(email.trim(),{redirectTo:authRedirectUrl()}).then(({error})=>{
-      setLoading(false);
-      if(error){setNote(error.message.toUpperCase());return}
-      setResetSent(true);
-    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
-  },[email,fail]);
-  const onPassKey=useCallback(e=>{
-    try{setCaps(e.getModifierState?e.getModifierState('CapsLock'):false)}catch(err){setCaps(false)}
-  },[]);
-  const onButtonDown=useCallback(e=>{
-    if(REDUCED)return;
-    const el=e.currentTarget;
-    const r=el.getBoundingClientRect();
-    const id=++rid.current;
-    setRipples(p=>p.concat([{id:id,x:e.clientX-r.left,y:e.clientY-r.top}]).slice(-4));
-  },[]);
-  const switchMode=useCallback(m=>{
-    setMode(m);setErrors({});setNote('');setResetSent(false);setShowPass(false);
-  },[]);
-  const onSocial=useCallback(()=>{
-    if(!supabaseClient){setNote('AUTH SERVICE DID NOT LOAD');return}
-    setLoading(true);setNote('');
-    supabaseClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:authRedirectUrl()}}).then(({error})=>{
-      if(error){setLoading(false);setNote(error.message.toUpperCase())}
-    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
-  },[]);
-  const passToggle=<button type="button" onClick={()=>setShowPass(v=>!v)} className="absolute right-0 top-1 font-mono text-[9px] tracking-[.25em] text-cod/55 hover:text-vermilion transition-colors min-h-[32px]">{showPass?'HIDE':'SHOW'}</button>;
-  return <div ref={wrap} onPointerMove={onMove} onPointerLeave={onLeave} style={{perspective:1000}} className="w-full max-w-[440px]">
-    <motion.div style={{rotateX:srx,rotateY:sry}} className={'relative bg-paper text-cod border-2 border-cod shadow-[10px_10px_0_0_#FC4C13] p-6 md:p-8 '+(shake?'shake':'')}>
-      <div className="flex items-center justify-between gap-4 pb-6">
-        <span className="flex items-center gap-3">
-          <VAMark className="h-8 w-8"/>
-          <span className="font-mono text-[10px] tracking-[.3em] text-cod">THE VISUAL ARCHIVE</span>
-        </span>
-        <span className="flex items-center gap-2 font-mono text-[9px] tracking-[.25em] text-cod/50"><span className="w-1.5 h-1.5 rounded-full bg-vermilion pulse"/>VAULT LOCKED</span>
-      </div>
-      <div className="flex border border-cod/25 mb-7" role="tablist" aria-label="Auth mode">
-        {[['in','SIGN IN'],['up','REQUEST ACCESS']].map(([v,l])=>(
-          <button key={v} role="tab" aria-selected={mode===v} onClick={()=>switchMode(v)}
-            className={'flex-1 font-mono text-[10px] tracking-[.25em] py-3 min-h-[44px] transition-colors '+(mode===v?'bg-cod text-bone':'text-cod/60 hover:text-cod')}>{l}</button>
-        ))}
-      </div>
-      <AnimatePresence mode="wait">
-      {resetSent?(
-        <motion.div key="rs" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="text-center py-6">
-          <p className="font-display uppercase text-3xl text-cod leading-none">LINK SENT.</p>
-          <p className="font-mono text-[10px] tracking-[.22em] text-cod/60 pt-3 leading-relaxed">CHECK {String(email).trim().toUpperCase()} FOR THE<br/>VAULT KEY — IT EXPIRES IN 30 MIN.</p>
-          <button onClick={()=>switchMode('in')} className="mt-7 font-mono text-[10px] tracking-[.25em] text-vermilion border border-vermilion px-5 py-3 min-h-[44px] hover:bg-vermilion hover:text-bone transition-colors">← BACK TO SIGN IN</button>
-        </motion.div>
-      ):(mode==='in'?(
-        <motion.form key="in" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitIn} className="space-y-6" noValidate>
-          <LoginField id="li-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com"
-            value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
-          <LoginField id="li-pass" label="PASSWORD" type={showPass?'text':'password'} autoComplete="current-password" placeholder="••••••••" padRight={true}
-            value={pass} onChange={e=>setPass(e.target.value)} onKeyUp={onPassKey} error={errors.pass} trailing={passToggle}
-            hint={caps?'⇪ CAPS LOCK IS ON':''}/>
-          <div className="flex items-center justify-between gap-3 pt-1">
-            <span className="flex items-center gap-2 min-h-[32px]">
-              <span className="w-4 h-4 border-2 border-cod/40 flex items-center justify-center text-[9px] text-vermilion">✓</span>
-              <span className="font-mono text-[9px] tracking-[.22em] text-cod/60">KEEP ME SIGNED IN</span>
-            </span>
-            <button type="button" onClick={()=>switchMode('reset')} className="font-mono text-[9px] tracking-[.22em] text-cod/60 hover:text-vermilion transition-colors min-h-[32px]">FORGOT KEY?</button>
-          </div>
-          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
-            className="relative overflow-hidden w-full bg-vermilion text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#1D1D1D] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#1D1D1D] transition-all disabled:opacity-60">
-            {ripples.map(rp=><motion.span key={rp.id} initial={{scale:0,opacity:.5}} animate={{scale:10,opacity:0}} transition={{duration:.7,ease:'easeOut'}} style={{left:rp.x,top:rp.y}} className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full bg-bone/60 pointer-events-none"/>)}
-            {loading?'DEVELOPING ACCESS…':'OPEN THE VAULT ↗'}
-          </button>
-        </motion.form>
-      ):(mode==='up'?(
-        <motion.form key="up" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitUp} className="space-y-6" noValidate>
-          <LoginField id="su-name" label="NAME" placeholder="How we credit you" value={name} onChange={e=>setName(e.target.value)} error={errors.name}/>
-          <LoginField id="su-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com" value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
-          <div>
-            <LoginField id="su-pass" label="PASSWORD" type={showPass?'text':'password'} autoComplete="new-password" placeholder="MIN 6 CHARACTERS" padRight={true}
-              value={pass} onChange={e=>setPass(e.target.value)} onKeyUp={onPassKey} error={errors.pass} trailing={passToggle}
-              hint={caps?'⇪ CAPS LOCK IS ON':''}/>
-            <div className="flex items-center gap-2 pt-3">
-              <div className="flex gap-1 flex-1">{[0,1,2,3].map(i=>(<span key={i} className={'h-1 flex-1 transition-colors '+(i<score?(score<=2?'bg-vermilion':score===3?'bg-ember':'bg-cod'):'bg-cod/15')}/>))}</div>
-              <span className="font-mono text-[9px] tracking-[.2em] text-cod/55 w-24 text-right tnum">{STRENGTH_LABEL[score]}</span>
-            </div>
-          </div>
-          <button type="button" onClick={()=>setTerms(v=>!v)} aria-pressed={terms} className="flex items-start gap-3 text-left min-h-[32px]">
-            <span className={'mt-[2px] w-4 h-4 shrink-0 border-2 flex items-center justify-center text-[9px] transition-colors '+(terms?'border-vermilion bg-vermilion text-bone':'border-cod/40 text-transparent')}>✓</span>
-            <span className="font-mono text-[9px] tracking-[.2em] text-cod/60 leading-relaxed">I WILL CREDIT EVERY PLATE I TAKE — THE ONLY PRICE THIS ARCHIVE ASKS.</span>
-          </button>
-          {errors.terms&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion -mt-3">{errors.terms}</p>}
-          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
-            className="relative overflow-hidden w-full bg-cod text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#FC4C13] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#FC4C13] transition-all disabled:opacity-60">
-            {ripples.map(rp=><motion.span key={rp.id} initial={{scale:0,opacity:.5}} animate={{scale:10,opacity:0}} transition={{duration:.7,ease:'easeOut'}} style={{left:rp.x,top:rp.y}} className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full bg-vermilion/60 pointer-events-none"/>)}
-            {loading?'PRINTING YOUR KEY…':'REQUEST ACCESS ↗'}
-          </button>
-        </motion.form>
-      ):(
-        <motion.form key="rz" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitReset} className="space-y-6" noValidate>
-          <p className="font-display uppercase text-2xl text-cod leading-tight">LOST THE KEY?</p>
-          <p className="font-mono text-[10px] tracking-[.22em] text-cod/60 leading-relaxed -mt-3">TYPE YOUR EMAIL — WE WILL SEND A FRESH KEY TO THE DOOR.</p>
-          <LoginField id="rs-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com" value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
-          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
-            className="relative overflow-hidden w-full bg-vermilion text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#1D1D1D] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#1D1D1D] transition-all disabled:opacity-60">
-            {loading?'SEARCHING THE DRAWER…':'SEND RESET KEY ↗'}
-          </button>
-          <button type="button" onClick={()=>switchMode('in')} className="w-full font-mono text-[10px] tracking-[.25em] text-cod/60 hover:text-vermilion transition-colors min-h-[40px]">← BACK TO SIGN IN</button>
-        </motion.form>
-      )))}
-      </AnimatePresence>
-      {!resetSent&&<div className="pt-7 space-y-4">
-        <div className="flex items-center gap-3"><span className="h-px bg-cod/15 flex-1"/><span className="font-mono text-[9px] tracking-[.25em] text-cod/45">OR</span><span className="h-px bg-cod/15 flex-1"/></div>
-        <button type="button" onClick={onSocial} disabled={loading}
-          className="w-full font-mono text-[10px] tracking-[.25em] text-cod/70 border border-cod/25 py-3 min-h-[44px] hover:bg-cod hover:text-bone transition-colors">GOOGLE ↗</button>
-        {note&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion">{note}</p>}
-        <button type="button" onClick={onExit} className="block w-full text-center font-mono text-[10px] tracking-[.25em] text-cod/60 hover:text-vermilion transition-colors min-h-[40px] pt-1">CONTINUE AS GUEST →</button>
-      </div>}
-      <AnimatePresence>
-      {granted&&(
-        <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-10 bg-paper/95 flex flex-col items-center justify-center gap-5">
-          <motion.p initial={{scale:1.6,rotate:-16,opacity:0}} animate={{scale:1,rotate:-8,opacity:1}} transition={{type:'spring',stiffness:260,damping:14}}
-            className="border-4 border-vermilion text-vermilion font-display uppercase text-3xl md:text-4xl px-6 py-3">ACCESS GRANTED</motion.p>
-          <p className="font-mono text-[10px] tracking-[.3em] text-cod/60 text-center px-6">WELCOME, {String(name||String(email||'').split('@')[0]).toUpperCase()} — OPENING THE VAULT…</p>
-        </motion.div>
-      )}
-      </AnimatePresence>
-    </motion.div>
-    <p className="font-mono text-[9px] tracking-[.22em] text-taupe text-center pt-5 leading-relaxed">SECURE ACCESS POWERED BY SUPABASE.<br/><button onClick={onExit} className="text-bone/80 hover:text-vermilion transition-colors">BACK TO ARCHIVE</button></p>
-  </div>;
-}
-function LoginView({onGranted,onExit}){
-  return <div className="min-h-screen bg-ink text-bone font-body relative">
-    <button onClick={onExit} data-hover className="fixed top-4 right-4 z-40 font-mono text-[10px] tracking-[.28em] text-bone/70 hover:text-vermilion transition-colors bg-ink/60 border border-bone/20 rounded-full px-4 py-3 min-h-[40px] backdrop-blur-md">← BACK TO ARCHIVE</button>
-    <div className="relative z-10 grid lg:grid-cols-[1.15fr_1fr] min-h-screen">
-      <section className="relative min-h-[46vh] lg:min-h-screen overflow-hidden flex flex-col justify-between">
-        <LoginBackdrop/>
-        <div className="relative z-10 pp pt-8 lg:pt-12">
-          <p className="font-mono text-[10px] tracking-[.3em] text-bone/80"><Scramble text="MEMBERS ENTRANCE — EST. 2026"/></p>
-        </div>
-        <div className="relative z-10 pp py-10 lg:py-0 lg:flex-1 lg:flex flex-col justify-center">
-          <h1 className="font-display uppercase leading-[.9] text-[clamp(2.8rem,8vw,7.5rem)] text-bone drop-shadow-[0_2px_18px_rgba(16,14,12,.7)]">
-            <CharLines lines={[{t:'THE VAULT'},{t:'OPENS'},{t:'FOR YOU.',cls:'text-vermilion'}]}/>
-          </h1>
-          <p className="mt-6 max-w-[46ch] text-sm md:text-base leading-relaxed text-bone/80 reveal is-in">Sign in to keep your searches, filed notes and developed plates waiting for you behind the door. Light, kept in order — and kept for you.</p>
-          <div className="mt-8 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[10px] tracking-[.25em] text-bone/70 tnum reveal is-in">
-            <span>∞ PLATES</span><span>05 ROOMS</span><span>0 TRACKERS</span><span>100% FREE-TO-USE</span>
-          </div>
-        </div>
-        <div className="relative z-10">
-          <Marquee speed={24} className="bg-vermilion">
-            {['SIGN IN','SEARCH','DEVELOP','PRINT','REPEAT'].map(w=>(
-              <span key={w} className="flex items-center"><span className="font-display uppercase text-ink text-lg md:text-2xl px-5">{w}</span><span className="text-bone text-lg md:text-xl">✳</span></span>
-            ))}
-          </Marquee>
-        </div>
-      </section>
-      <section className="relative flex items-center justify-center pp py-14 lg:py-10" style={{background:'radial-gradient(700px 420px at 70% 20%, rgba(252,76,19,.07), transparent 60%)'}}>
-        <LoginCard onGranted={onGranted} onExit={onExit}/>
-      </section>
-    </div>
-  </div>;
 }
 
 /* ================= HERO ================= */
@@ -1511,26 +1196,12 @@ class Boundary extends React.Component{
   }
 }
 
-/* ================= APP — site + in-file login view ================= */
+/* ================= APP ================= */
 function App(){
   const [loaded,setLoaded]=useState(REDUCED);
   const [current,setCurrent]=useState({n:'00',name:'ENTRANCE'});
   const [pct,setPct]=useState(0);
   const [shot,setShot]=useState({q:'LIGHT',items:[]});
-  const [view,setView]=useState(()=>{try{return location.hash==='#login'?'login':'site'}catch(e){return 'site'}});
-  const [session,setSession]=useState(null);
-  useEffect(()=>{
-    const onHash=()=>{setView(location.hash==='#login'?'login':'site')};
-    addEventListener('hashchange',onHash);
-    return()=>removeEventListener('hashchange',onHash);
-  },[]);
-  useEffect(()=>{
-    if(!supabaseClient)return;
-    let active=true;
-    supabaseClient.auth.getSession().then(({data})=>{if(active)setSession(data.session)}).catch(()=>{});
-    const {data:{subscription}}=supabaseClient.auth.onAuthStateChange((_event,nextSession)=>{if(active)setSession(nextSession)});
-    return()=>{active=false;subscription.unsubscribe()};
-  },[]);
   useEffect(()=>{if(REDUCED||!window.Lenis)return;try{const lenis=new window.Lenis({duration:1.15,easing:t=>1-Math.pow(1-t,4)});lenisInstance=lenis;let raf;const loop=t=>{lenis.raf(t);raf=requestAnimationFrame(loop)};raf=requestAnimationFrame(loop);return()=>{cancelAnimationFrame(raf);lenis.destroy();lenisInstance=null}}catch(e){}},[]);
   useEffect(()=>{
     if(REDUCED)return;let last=scrollY,vel=0,raf=null,active=false;
@@ -1569,31 +1240,11 @@ function App(){
     };
     addEventListener('keydown',on);return()=>removeEventListener('keydown',on);
   },[random]);
-  const goLogin=useCallback(()=>{SND.open();try{location.hash='#login'}catch(e){setView('login')}},[]);
-  const exitLogin=useCallback(()=>{
-    try{history.replaceState(null,'',location.pathname+location.search)}catch(e){try{location.hash=''}catch(e2){}}
-    setView('site');
-    window.scrollTo({top:0,behavior:'auto'});
-  },[]);
-  const handleGranted=useCallback(sess=>{
-    setSession(sess);
-    if(curtainSweep)curtainSweep();
-    setTimeout(()=>{exitLogin()},560);
-  },[exitLogin]);
-  const signOut=useCallback(()=>{
-    if(supabaseClient)supabaseClient.auth.signOut().catch(()=>{});
-    setSession(null);
-    SND.close();
-    if(curtainSweep)curtainSweep();
-  },[]);
   return <div className="bg-ink text-bone min-h-screen font-body">
     <Grain/><Cursor/><Curtain/>
-    {view==='login'?(
-      <LoginView onGranted={handleGranted} onExit={exitLogin}/>
-    ):(<>
       <Lightbox/><Dots current={current} pct={pct}/><BackTop/>
       <AnimatePresence>{!loaded&&<Preloader onDone={()=>setLoaded(true)}/>}</AnimatePresence>
-      <Nav current={current} onRandom={random} session={session} onSignIn={goLogin} onSignOut={signOut}/>
+      <Nav current={current} onRandom={random}/>
       <main id="main">
         <Hero/>
         <SearchSection onResults={setShot}/>
@@ -1608,7 +1259,6 @@ function App(){
         <Bridge a="#100E0C" b="#211D19"/>
       </main>
       <Footer/>
-    </>)}
   </div>;
 }
 function boot(){
