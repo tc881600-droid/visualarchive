@@ -1,0 +1,1504 @@
+const {useEffect,useRef,useState,useCallback,useMemo}=React;
+const FM=window.Motion||{};
+const {motion,AnimatePresence,useScroll,useTransform,useMotionValueEvent,useAnimationControls,useMotionValue,useSpring}=FM;
+const REDUCED=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+const FINE=window.matchMedia('(pointer: fine)').matches;
+const SUPABASE_URL='https://orstxiasufevqdstbjtv.supabase.co';
+const SUPABASE_PUBLISHABLE_KEY='sb_publishable_2eg899AntRsbnd8znnOFrw_w0p6C66I';
+const supabaseClient=window.supabase&&window.supabase.createClient
+  ?window.supabase.createClient(SUPABASE_URL,SUPABASE_PUBLISHABLE_KEY)
+  :null;
+const clampN=(v,a,b)=>Math.min(b,Math.max(a,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const store={
+  get(k){try{return localStorage.getItem(k)}catch(e){return null}},
+  set(k,v){try{localStorage.setItem(k,v)}catch(e){}}
+};
+let lenisInstance=null,curtainGo=null,curtainSweep=null;
+function hardScroll(t){
+  try{document.body.style.overflow=''}catch(e){}
+  if(lenisInstance){try{lenisInstance.start()}catch(e){}}
+  let y=0;
+  if(typeof t==='string'){
+    const el=document.querySelector(t);
+    if(el){y=el.getBoundingClientRect().top+window.scrollY-72}
+  }else{y=t||0}
+  y=Math.max(0,y);
+  if(lenisInstance){
+    try{lenisInstance.scrollTo(y,{immediate:true});return}catch(e){}
+  }
+  window.scrollTo({top:y,behavior:'auto'});
+}
+const scrollToEl=t=>{if(lenisInstance)lenisInstance.scrollTo(t,{duration:1.4,offset:0});else if(typeof t==='string')document.querySelector(t)?.scrollIntoView({behavior:REDUCED?'auto':'smooth'});else window.scrollTo({top:0,behavior:REDUCED?'auto':'smooth'})};
+const curtainTo=t=>{if(curtainGo)curtainGo(t);else hardScroll(t)};
+const openLightbox=item=>window.dispatchEvent(new CustomEvent('va-lb',{detail:item}));
+const slug=s=>String(s||'plate').toLowerCase().replace(/[^a-z0-9]+/g,'-').replace(/^-+|-+$/g,'').slice(0,40)||'plate';
+const picseed=(s,w,h)=>`https://picsum.photos/seed/${slug(s)}/${w}/${h}`;
+const SKEW_STYLE={transform:'skewY(var(--va-skew))'};
+const RATIOS=['aspect-[4/5]','aspect-square','aspect-[3/4]','aspect-[3/2]'];
+const DEV_IMG_DATA='';
+const DEV_IMG='dev.png';
+const DEV={
+  name:'CHAUHAN TEJASH',
+  role:'FULL STACK DEVELOPER — WEB & SOFTWARE SPECIALIST',
+  bio:'Full-Stack Developer & Software Development student focused on building modern web applications, AI-powered tools, and polished digital experiences. I combine full-stack engineering with UI/UX, AI, and creative problem-solving to turn ideas into functional products.',
+  email:'tc881600@gmail.com',
+  portfolio:'https://tejash-portfolio18.vercel.app',
+  linkedin:'https://www.linkedin.com/in/tejash-chauhan-5a30bb35a',
+  insta:'https://www.instagram.com/tejxash',
+  handle:'@TEJXASH'
+};
+const emailOk=v=>/^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/.test(String(v||'').trim());
+const authRedirectUrl=()=>location.origin+location.pathname;
+const memberName=session=>{
+  const user=session&&session.user;
+  const data=(user&&user.user_metadata)||{};
+  return data.full_name||data.name||data.user_name||String((user&&user.email)||'MEMBER').split('@')[0];
+};
+
+function VAMark({className='',bg=true,mark='#F7F5F0',field='#FC4C13',gap=null}){
+  const gapColor=gap||field;
+  return <svg viewBox="0 0 96 96" className={className} role="img" aria-label="The Visual Archive monogram">
+    {bg&&<rect width="96" height="96" fill={field}/>}
+    <g transform="translate(13 29) scale(0.5833)">
+      <g fill={mark}>
+        <path d="M14 14h8l16 26 16-26h8L42 48h-8z"/>
+        <path fillRule="evenodd" d="M79 12 98 48h-8l-4-8H72l-4 8h-8zm0 14 4 8h-8z"/>
+      </g>
+      <path d="M14 57C46 42 82 30 118 21 84 34 50 46 20 59z" fill={bg?gapColor:'none'} stroke={bg?gapColor:mark} strokeWidth="7"/>
+      <path d="M14 57C46 42 82 30 118 21 84 34 50 46 20 59z" fill={mark}/>
+    </g>
+  </svg>;
+}
+
+/* ================= IMAGE PIPELINE ================= */
+const cache=new Map();
+const stripHtml=h=>String(h&&h.value||'').replace(/<[^>]+>/g,'').trim();
+async function commons(q,page,lic){
+  const p=new URLSearchParams({action:'query',format:'json',origin:'*',generator:'search',
+    gsrsearch:`filetype:bitmap ${q}`,gsrnamespace:'6',gsrlimit:'24',gsroffset:String((page-1)*24),
+    prop:'imageinfo',iiprop:'url|size|extmetadata',iiurlwidth:'900'});
+  const r=await fetch(`https://commons.wikimedia.org/w/api.php?${p}`);
+  if(!r.ok)throw new Error('commons '+r.status);
+  const j=await r.json();
+  let items=Object.values(j.query&&j.query.pages?j.query.pages:{}).map(pg=>{const ii=(pg.imageinfo||[])[0]||{};const em=ii.extmetadata||{};
+    return {id:String(pg.pageid),title:(pg.title||'').replace(/^File:/,'').replace(/\.[a-z]+$/i,'').replace(/[_-]+/g,' ').toUpperCase(),
+      creator:stripHtml(em.Artist)||'UNKNOWN',license:stripHtml(em.LicenseShortName)||'CC',
+      thumb:ii.thumburl,full:ii.url,sourceUrl:ii.descriptionurl,srcName:'wikimedia commons'};}).filter(x=>x.thumb);
+  if(lic==='cc0')items=items.filter(x=>/CC0|PD|PUBLIC/i.test(x.license));
+  if(lic==='commercial')items=items.filter(x=>!/NC|ND/i.test(x.license));
+  return {source:'WIKIMEDIA COMMONS',total:items.length?9999:0,items};
+}
+async function openverse(q,page,lic){
+  const p=new URLSearchParams({q,page_size:'24',page:String(page),mature:'false'});
+  if(lic&&lic!=='all')p.set('license_type',lic);
+  const r=await fetch(`https://api.openverse.org/v1/images/?${p}`);
+  if(!r.ok)throw new Error('openverse '+r.status);
+  const j=await r.json();
+  return {source:'OPENVERSE',total:j.result_count||0,items:(j.results||[]).map(x=>({
+    id:x.id,title:x.title||'UNTITLED',creator:x.creator||'UNKNOWN',
+    license:`${(x.license||'cc').toUpperCase()}${x.license_version?' '+x.license_version:''}`,
+    thumb:x.url||x.thumbnail,full:x.url||x.thumbnail,sourceUrl:x.foreign_landing_url||x.url,srcName:x.source||'openverse'}))};
+}
+function placeholderSet(q,n){
+  n=n||24;
+  const items=[];
+  for(let i=0;i<n;i++){
+    items.push({
+      id:'ph-'+slug(q)+'-'+i,
+      title:q.toUpperCase()+' — STUDY '+String(i+1).padStart(2,'0'),
+      creator:'ARCHIVE STUDIO',
+      license:'CC0',
+      thumb:picseed(q+'-'+i,700,900),
+      full:picseed(q+'-'+i,1400,1000),
+      sourceUrl:'',
+      srcName:'placeholder'
+    });
+  }
+  return {source:'STUDIO PLACEHOLDERS',total:n,items:items};
+}
+async function searchImages(q,page,lic){
+  page=page||1;lic=lic||'all';
+  const key=q+'|'+page+'|'+lic;
+  if(cache.has(key))return cache.get(key);
+  let out=null;
+  try{out=await commons(q,page,lic);if(!out.items.length)out=null}catch(e){}
+  if(!out){try{out=await openverse(q,page,lic);if(!out.items.length)out=null}catch(e){}}
+  if(!out)out=placeholderSet(q);
+  cache.set(key,out);return out;
+}
+async function corsPhoto(q){
+  try{const r=await commons(q,1,'all');if(r.items[0])return r.items[0].thumb}catch(e){}
+  return picseed(q,880,1100);
+}
+async function fetchPlate(q){
+  try{
+    const r=await commons(q,1,'all');
+    if(r.items&&r.items[0])return r.items[0];
+    throw new Error('empty');
+  }catch(e){
+    return {id:'ph-'+slug(q),thumb:picseed(q,1200,900),creator:'ARCHIVE STUDIO',license:'CC0',srcName:'placeholder',title:q};
+  }
+}
+
+/* ================= SOUND ================= */
+const SND={
+ ctx:null,noise:null,muted:store.get('va-mute')==='1',
+ ensure(){if(this.muted)return null;try{if(!this.ctx){const AC=window.AudioContext||window.webkitAudioContext;if(!AC)return null;this.ctx=new AC()}if(this.ctx.state==='suspended')this.ctx.resume()}catch(e){return null}return this.ctx},
+ nb(c){if(!this.noise){const b=c.createBuffer(1,c.sampleRate*0.4,c.sampleRate);const d=b.getChannelData(0);for(let i=0;i<d.length;i++)d[i]=Math.random()*2-1;this.noise=b}return this.noise},
+ tone(f0,f1,dur,type,vol){type=type||'sine';vol=vol||.15;const c=this.ensure();if(!c)return;try{const t=c.currentTime;const o=c.createOscillator(),g=c.createGain();o.type=type;o.frequency.setValueAtTime(f0,t);o.frequency.exponentialRampToValueAtTime(Math.max(30,f1),t+dur);g.gain.setValueAtTime(0,t);g.gain.linearRampToValueAtTime(vol,t+.01);g.gain.exponentialRampToValueAtTime(.0001,t+dur);o.connect(g).connect(c.destination);o.start(t);o.stop(t+dur+.02)}catch(e){}},
+ click(){this.tone(1500,900,.06,'triangle',.08)},
+ open(){this.tone(300,720,.2,'sine',.1)},
+ close(){this.tone(620,240,.16,'sine',.09)},
+ pop(){this.tone(520,880,.07,'square',.06)},
+ thunk(){this.tone(130,55,.28,'sine',.22);this.tone(900,300,.05,'triangle',.07)},
+ crumple(){const c=this.ensure();if(!c)return;try{const t=c.currentTime;const s=c.createBufferSource();s.buffer=this.nb(c);const f=c.createBiquadFilter();f.type='lowpass';f.frequency.setValueAtTime(2200,t);f.frequency.exponentialRampToValueAtTime(240,t+.3);const g=c.createGain();g.gain.setValueAtTime(.0001,t);g.gain.linearRampToValueAtTime(.2,t+.03);g.gain.exponentialRampToValueAtTime(.0001,t+.32);s.connect(f).connect(g).connect(c.destination);s.start(t);s.stop(t+.35)}catch(e){}},
+ shutter(){this.tone(2200,400,.045,'square',.09);setTimeout(()=>this.tone(1600,300,.05,'square',.07),70)},
+ toggle(){this.muted=!this.muted;store.set('va-mute',this.muted?'1':'0');if(!this.muted)this.click();return this.muted},
+};
+
+/* ================= DATA ================= */
+const GENRES=[
+ {q:'street photography night',name:'STREET',note:'35MM · f/8 · DECISIVE TIMING',line:'The city performs whether or not you raise the camera. Street work is patience in good shoes — wait where the light falls, and let strangers finish the composition.'},
+ {q:'portrait black and white window light',name:'PORTRAIT',note:'85MM · f/1.8 · WINDOW LIGHT',line:'A portrait is a negotiation. The frame keeps only what the sitter agreed to give — the rest stays behind the eyes, undeveloped.'},
+ {q:'mountain landscape fog sunrise',name:'LANDSCAPE',note:'24MM · f/11 · FIRST LIGHT',line:'Landscape is weather waited out. The mountain was always there; the light was the appointment. Arrive an hour early and stand still longer than feels useful.'},
+ {q:'still life fruit table shadow',name:'STILL LIFE',note:'100MM · f/5.6 · ONE LAMP',line:'The quietest genre: nothing moves, so everything matters — the edge of a bowl, the length of a shadow, the distance between two oranges.'},
+ {q:'brutalist architecture concrete facade',name:'ARCHITECTURE',note:'28MM · f/8 · HARD NOON',line:'Concrete photographs best at noon, when the sun cuts pour lines into relief. Shoot the building against empty sky and let geometry do the talking.'},
+];
+const QUICK=['FOG','NEON','DUNES','HARBOUR','PORTRAIT','BRUTALISM','WAVES','MARKET'];
+const HERO_QUERIES=['golden hour silhouette','fog mountain ridge','neon street rain','portrait window light','desert dunes shadow','harbour boats mist'];
+const LOGIN_QUERIES=['darkroom enlarger','film negatives light','neon street rain','fog mountain ridge'];
+const SECTIONS=[
+ {id:'search',n:'01',name:'THE SEARCH'},
+ {id:'genres',n:'02',name:'GENRES'},
+ {id:'darkroom',n:'03',name:'DARKROOM'},
+ {id:'sheet',n:'04',name:'CONTACT SHEET'},
+ {id:'note',n:'05',name:'CORRESPONDENCE'},
+];
+
+/* ================= UTILITIES ================= */
+function useReveal(){const r=useRef(null);useEffect(()=>{const el=r.current;if(!el)return;const io=new IntersectionObserver(([e])=>{if(e.isIntersecting){el.classList.add('is-in');io.disconnect()}},{threshold:.15});io.observe(el);return()=>io.disconnect()},[]);return r}
+function CharLines({lines,className=''}){
+  const r=useReveal();
+  const items=lines.map(l=>typeof l==='string'?{t:l,cls:''}:l);
+  return <span ref={r} className={`reveal block ${className}`}>{items.map((l,i)=>(
+    <span key={l.t+i} className="mask-line"><span className={`chars ${l.cls}`}>{l.t.split('').map((ch,j)=>(
+      <span key={j} style={{transitionDelay:`${i*0.1+j*0.026}s`}}>{ch===' '?'\u00A0':ch}</span>))}</span></span>))}</span>;
+}
+function Scramble({text,className=''}){
+  const [out,setOut]=useState(text);const r=useRef(null);
+  useEffect(()=>{
+    if(REDUCED)return;const el=r.current;if(!el)return;let raf,done=false;
+    const chars='█▓▒░/<>*#—';
+    const io=new IntersectionObserver(([e])=>{
+      if(!e.isIntersecting||done)return;done=true;io.disconnect();
+      const start=performance.now();
+      const tick=t=>{const p=clampN((t-start)/650,0,1);const n=Math.floor(p*text.length);
+        setOut(text.slice(0,n)+text.slice(n).split('').map(c=>c===' '?' ':chars[Math.floor(Math.random()*chars.length)]).join(''));
+        if(p<1)raf=requestAnimationFrame(tick);else setOut(text)};
+      raf=requestAnimationFrame(tick);
+    },{threshold:.5});
+    io.observe(el);return()=>{io.disconnect();cancelAnimationFrame(raf)};
+  },[text]);
+  return <span ref={r} className={className}>{out}</span>;
+}
+function Marquee({children,speed,reverse,className='',trackClass=''}){
+  speed=speed||32;
+  return <div className={`marquee overflow-hidden ${className||''}`}>
+    <div className={`marquee-track ${reverse?'rev':''} ${trackClass||''}`} style={{'--dur':speed+'s'}}>
+      <div className="flex shrink-0 items-center">{children}</div>
+      <div className="flex shrink-0 items-center" aria-hidden="true">{children}</div>
+    </div></div>;
+}
+function Mag({children,strength,className=''}){
+  strength=strength||10;
+  const r=useRef(null);
+  useEffect(()=>{
+    if(!FINE||REDUCED)return;const el=r.current;if(!el)return;
+    let rx=0,ry=0,tx=0,ty=0,raf=null;
+    const loop=()=>{rx=lerp(rx,tx,.18);ry=lerp(ry,ty,.18);el.style.transform=`translate(${rx}px,${ry}px)`;if(Math.abs(rx-tx)>.1||Math.abs(ry-ty)>.1)raf=requestAnimationFrame(loop);else raf=null};
+    const run=()=>{if(!raf)raf=requestAnimationFrame(loop)};
+    const mv=e=>{const b=el.getBoundingClientRect();tx=clampN((e.clientX-(b.left+b.width/2))/b.width*2,-1,1)*strength;ty=clampN((e.clientY-(b.top+b.height/2))/b.height*2,-1,1)*strength;run()};
+    const lv=()=>{tx=0;ty=0;run()};
+    el.addEventListener('pointermove',mv);el.addEventListener('pointerleave',lv);
+    return()=>{el.removeEventListener('pointermove',mv);el.removeEventListener('pointerleave',lv);cancelAnimationFrame(raf)};
+  },[strength]);
+  return <span ref={r} className={`inline-block will-change-transform ${className||''}`}>{children}</span>;
+}
+function Photo({src,alt,className='',imgClass='',eager=false}){
+  const fb=useMemo(()=>picseed(alt||src,900,700),[alt,src]);
+  const [cur,setCur]=useState(src);
+  const [st,setSt]=useState('load');
+  useEffect(()=>{setCur(src);setSt('load')},[src]);
+  useEffect(()=>{
+    if(st!=='load')return;
+    const t=setTimeout(()=>{if(cur===src)setCur(fb);else setSt('err')},9000);
+    return()=>clearTimeout(t);
+  },[st,cur,src,fb]);
+  return <div className={`relative overflow-hidden bg-ink2 ${className||''}`}>
+    {st==='err'?<div className="absolute inset-0 m-2 flex items-center justify-center border border-bone/15 font-mono text-[10px] tracking-[.3em] text-taupe">PLATE MISSING</div>:
+    <img alt={alt} loading={eager?'eager':'lazy'} decoding="async" referrerPolicy="no-referrer" src={cur}
+      onLoad={()=>setSt('ok')}
+      onError={()=>{if(cur===src)setCur(fb);else setSt('err')}}
+      className={`h-full w-full object-cover transition-opacity duration-700 ${st==='ok'?'opacity-100':'opacity-0'} ${imgClass||''}`}/>}
+    {st==='load'&&<div className="absolute inset-0 animate-pulse bg-ink2"/>}
+  </div>;
+}
+function Bridge({a,b}){return <div aria-hidden="true" className="h-24 md:h-32" style={{background:`linear-gradient(to bottom, ${a}, ${b})`}}/>}
+function SectionHead({index,name,count,lines,blurb}){
+  return <div className="pp max-w-[1400px] mx-auto">
+    <div className="flex items-baseline justify-between gap-4 border-t border-bone/20 pt-4">
+      <p className="font-mono text-[11px] tracking-[.3em] text-bone"><Scramble text={`(${index}) — ${name}`}/></p>
+      <p className="font-mono text-[11px] tracking-[.25em] text-taupe tnum">{count}</p>
+    </div>
+    <div className="grid md:grid-cols-12 gap-6 pt-10 md:pt-16 pb-8">
+      <h2 style={SKEW_STYLE} className="skewable md:col-span-8 font-display uppercase leading-[.94] text-[clamp(2.6rem,8.5vw,7.5rem)] text-bone">
+        <CharLines lines={lines}/>
+      </h2>
+      <p className="md:col-span-4 md:pt-4 max-w-sm text-sm md:text-base leading-relaxed reveal text-taupe">{blurb}</p>
+    </div>
+  </div>;
+}
+function Credit({item,className=''}){
+  return <p className={`font-mono text-[9px] tracking-[.18em] text-taupe truncate ${className||''}`}>© {item.creator} — {item.license} · {item.srcName.toUpperCase()}</p>;
+}
+
+/* ================= CHROME ================= */
+function Grain(){return <div className="grain" aria-hidden="true"/>}
+function Cursor(){
+  const dot=useRef(null),ring=useRef(null);
+  useEffect(()=>{
+    if(!FINE||REDUCED)return;document.body.classList.add('has-cursor');
+    let x=innerWidth/2,y=innerHeight/2,rx=x,ry=y,ts=1,s=1,raf;
+    const move=e=>{x=e.clientX;y=e.clientY;ts=e.target.closest('a,button,textarea,input,[data-hover]')?1.9:1};
+    const loop=()=>{rx=lerp(rx,x,.16);ry=lerp(ry,y,.16);s=lerp(s,ts,.14);
+      if(dot.current)dot.current.style.transform=`translate3d(${x}px,${y}px,0) translate(-50%,-50%)`;
+      if(ring.current)ring.current.style.transform=`translate3d(${rx}px,${ry}px,0) translate(-50%,-50%) scale(${s}) rotate(${(s-1)*22}deg)`;
+      raf=requestAnimationFrame(loop)};
+    addEventListener('pointermove',move);loop();
+    return()=>{removeEventListener('pointermove',move);cancelAnimationFrame(raf);document.body.classList.remove('has-cursor')};
+  },[]);
+  if(!FINE||REDUCED)return null;
+  return <><div ref={dot} className="fixed top-0 left-0 z-[145] w-2 h-2 bg-vermilion pointer-events-none"/><div ref={ring} className="fixed top-0 left-0 z-[144] w-9 h-9 border border-vermilion/70 pointer-events-none"/></>;
+}
+function Clock(){const [t,setT]=useState('--:--:--');useEffect(()=>{const f=()=>setT(new Date().toLocaleTimeString('en-GB',{hour12:false}));f();const i=setInterval(f,1000);return()=>clearInterval(i)},[]);return <span className="font-mono text-[11px] tracking-[.2em] tabular-nums opacity-70">{t}</span>}
+function Preloader({onDone}){
+  const [n,setN]=useState(0);
+  useEffect(()=>{if(REDUCED){onDone();return}let v=0;const i=setInterval(()=>{v=Math.min(100,v+Math.random()*14+4);setN(Math.floor(v));if(v>=100){clearInterval(i);setTimeout(onDone,250)}},70);return()=>clearInterval(i)},[]);
+  return <motion.div exit={{y:'-100%'}} transition={{duration:.8,ease:[.76,0,.24,1]}} className="fixed inset-0 z-[120] bg-ink text-bone flex flex-col justify-between pp" style={{paddingBottom:'max(2rem,env(safe-area-inset-bottom))'}}>
+    <div className="flex items-center justify-between pt-6">
+      <VAMark className="h-9 w-9"/>
+      <p className="font-mono text-[11px] tracking-[.3em] text-taupe">WARMING THE ENLARGER</p>
+    </div>
+    <p className="font-display text-[clamp(5rem,22vw,18rem)] leading-none text-vermilion tnum">{String(n).padStart(3,'0')}</p>
+    <div className="h-[3px] bg-bone/10"><div className="h-full bg-vermilion transition-[width] duration-100" style={{width:`${n}%`}}/></div>
+  </motion.div>;
+}
+function Curtain(){
+  const ctrl=useAnimationControls();const busy=useRef(false);
+  useEffect(()=>{
+    curtainGo=async t=>{
+      if(REDUCED||busy.current){hardScroll(t);return}
+      busy.current=true;SND.open();
+      ctrl.set({y:'100%'});
+      await ctrl.start({y:'0%',transition:{duration:.45,ease:[.87,0,.13,1]}});
+      hardScroll(t);
+      await new Promise(r=>setTimeout(r,80));
+      await ctrl.start({y:'-100%',transition:{duration:.5,ease:[.87,0,.13,1]}});
+      busy.current=false;
+    };
+    curtainSweep=async()=>{
+      if(REDUCED||busy.current)return;
+      busy.current=true;
+      ctrl.set({y:'100%'});
+      await ctrl.start({y:'0%',transition:{duration:.4,ease:[.87,0,.13,1]}});
+      await new Promise(r=>setTimeout(r,120));
+      await ctrl.start({y:'-100%',transition:{duration:.45,ease:[.87,0,.13,1]}});
+      busy.current=false;
+    };
+    return()=>{curtainGo=null;curtainSweep=null};
+  },[]);
+  return <motion.div aria-hidden="true" initial={{y:'100%'}} animate={ctrl} className="fixed inset-0 z-[110] bg-vermilion flex items-center justify-center pointer-events-none">
+    <VAMark bg={false} mark="#100E0C" gap="#FC4C13" className="w-[min(34vw,190px)] h-auto"/>
+  </motion.div>;
+}
+function Lightbox(){
+  const [item,setItem]=useState(null);
+  useEffect(()=>{
+    const on=e=>{setItem(e.detail);SND.pop()};
+    const key=e=>{if(e.key==='Escape')setItem(null)};
+    window.addEventListener('va-lb',on);addEventListener('keydown',key);
+    return()=>{removeEventListener('va-lb',on);removeEventListener('keydown',key)};
+  },[]);
+  return <AnimatePresence>{item&&<motion.div
+    className="fixed inset-0 z-[105] pp flex items-center justify-center overflow-y-auto bg-ink/70 backdrop-blur-2xl supports-[backdrop-filter]:bg-ink/60"
+    initial={{opacity:0}} animate={{opacity:1}} exit={{opacity:0}} transition={{duration:.35,ease:'easeOut'}}
+    onClick={()=>{setItem(null);SND.close()}} role="dialog" aria-modal="true" aria-label={item.title}>
+    <motion.figure className="max-w-[900px] w-full py-10" initial={{scale:.94,y:22,filter:'blur(6px)'}} animate={{scale:1,y:0,filter:'blur(0px)'}} exit={{scale:.97,y:10,filter:'blur(4px)'}} transition={{duration:.4,ease:[.16,1,.3,1]}} onClick={e=>e.stopPropagation()}>
+      <Photo src={item.full||item.thumb} alt={item.title} className="max-h-[62vh] w-full border border-bone/20 bg-ink2" imgClass="object-contain"/>
+      <figcaption className="pt-4 space-y-3">
+        <div className="flex flex-wrap items-baseline justify-between gap-3">
+          <p className="font-display uppercase text-2xl md:text-3xl text-bone">{item.title}</p>
+          <p className="font-mono text-[11px] tracking-[.25em] text-vermilion">{item.license}</p>
+        </div>
+        <Credit item={item} className="text-[10px]"/>
+        <p className="text-sm text-bone/70 leading-relaxed">Free to use under the license above. Keep the credit — it is the only payment the photographer asked for.</p>
+        <div className="flex flex-wrap gap-3 pt-1">
+          {item.sourceUrl&&<a href={item.sourceUrl} target="_blank" rel="noopener noreferrer" data-hover className="font-mono text-[11px] tracking-[.3em] text-bone border border-bone/30 px-5 py-3 min-h-[44px] hover:bg-bone hover:text-ink transition-colors">SOURCE ↗</a>}
+          <button autoFocus onClick={()=>{setItem(null);SND.close()}} data-hover className="font-mono text-[11px] tracking-[.3em] text-bone border border-bone/30 px-5 py-3 min-h-[44px] hover:bg-bone hover:text-ink transition-colors">CLOSE — ESC</button>
+        </div>
+      </figcaption>
+    </motion.figure>
+  </motion.div>}</AnimatePresence>;
+}
+function Dots({current,pct}){
+  return <nav aria-label="Section progress" className="fixed right-5 top-1/2 -translate-y-1/2 z-[70] hidden md:flex flex-col items-end gap-3">
+    {[{id:'top',n:'00'},...SECTIONS].map(s=>{
+      const active=(s.id==='top'&&current.n==='00')||current.n===s.n;
+      return <button key={s.id} onClick={()=>{SND.click();curtainTo(s.id==='top'?0:'#'+s.id)}} data-hover aria-label={`Go to section ${s.n}`} className="group flex items-center gap-2 min-h-[24px]">
+        <span className="font-mono text-[9px] tracking-[.2em] text-taupe opacity-0 group-hover:opacity-100 transition-opacity tnum">{s.n}</span>
+        <span className={`block w-2 h-2 rotate-45 border transition-all ${active?'bg-vermilion border-vermilion':'border-bone/40 group-hover:border-bone'}`}/>
+      </button>;})}
+    <span className="font-mono text-[9px] tracking-[.2em] text-taupe mt-1 tnum">{String(pct).padStart(2,'0')}</span>
+  </nav>;
+}
+function BackTop(){
+  const [show,setShow]=useState(false);
+  useEffect(()=>{const f=()=>setShow(scrollY>innerHeight*1.2);f();addEventListener('scroll',f,{passive:true});return()=>removeEventListener('scroll',f)},[]);
+  return <AnimatePresence>{show&&<motion.button initial={{y:50,opacity:0}} animate={{y:0,opacity:1}} exit={{y:50,opacity:0}} onClick={()=>{SND.click();curtainTo(0)}} data-hover aria-label="Back to top" className="fixed bottom-6 right-5 z-[70] rounded-full glass border border-bone/25 text-bone font-mono text-[10px] tracking-[.3em] px-5 py-3 min-h-[44px] hover:border-vermilion hover:text-vermilion transition-colors">TOP ↑</motion.button>}</AnimatePresence>;
+}
+
+/* ================= NAV (with member chip / sign-in) ================= */
+function Nav({current,onRandom,session,onSignIn,onSignOut}){
+  const [open,setOpen]=useState(false);const [scrolled,setScrolled]=useState(false);
+  const [ripples,setRipples]=useState([]);
+  const tube=useRef(null);const light=useRef(null);const rid=useRef(0);
+  const mTilt=useMotionValue(0),mSy=useMotionValue(1),mSx=useMotionValue(1),mDy=useMotionValue(0);
+  const sTilt=useSpring(mTilt,{stiffness:90,damping:18,mass:.4});
+  const sSy=useSpring(mSy,{stiffness:90,damping:18,mass:.4});
+  const sSx=useSpring(mSx,{stiffness:90,damping:18,mass:.4});
+  const sDy=useSpring(mDy,{stiffness:90,damping:18,mass:.4});
+  useEffect(()=>{
+    if(REDUCED)return;
+    let last=scrollY,vel=0,raf=null,active=false;
+    const loop=()=>{const y=scrollY;vel=lerp(vel,y-last,.3);last=y;
+      mTilt.set(clampN(vel*-0.0016,-1.8,1.8));
+      mSy.set(clampN(1+vel*0.00005,0.94,1.06));
+      mSx.set(clampN(1-vel*0.00002,0.985,1.015));
+      mDy.set(clampN(vel*0.002,-2.5,2.5));
+      if(Math.abs(vel)>0.05){raf=requestAnimationFrame(loop)}else{mTilt.set(0);mSy.set(1);mSx.set(1);mDy.set(0);active=false;raf=null}};
+    const on=()=>{if(!active){active=true;raf=requestAnimationFrame(loop)}};
+    addEventListener('scroll',on,{passive:true});
+    return()=>{removeEventListener('scroll',on);cancelAnimationFrame(raf)};
+  },[]);
+  useEffect(()=>{const f=()=>setScrolled(scrollY>40);f();addEventListener('scroll',f,{passive:true});return()=>removeEventListener('scroll',f)},[]);
+  useEffect(()=>{const k=e=>{if(e.key==='Escape')setOpen(false)};addEventListener('keydown',k);return()=>removeEventListener('keydown',k)},[]);
+  useEffect(()=>{if(!lenisInstance)return;open?lenisInstance.stop():lenisInstance.start();document.body.style.overflow=open?'hidden':'';return()=>{document.body.style.overflow='';if(lenisInstance)lenisInstance.start()}},[open]);
+  const go=useCallback(id=>{
+    setOpen(false);
+    setTimeout(()=>{
+      hardScroll(id==='top'?0:'#'+id);
+      if(curtainSweep)curtainSweep();
+    },420);
+  },[]);
+  const members=useCallback(()=>{
+    setOpen(false);
+    setTimeout(()=>{if(session){onSignOut()}else{onSignIn()}},320);
+  },[session,onSignIn,onSignOut]);
+  const onMove=e=>{
+    const el=tube.current,lg=light.current;if(!el||!lg)return;
+    const r=el.getBoundingClientRect();
+    lg.style.setProperty('--mx',`${clampN(e.clientX-r.left,0,r.width)}px`);
+  };
+  const onDown=e=>{
+    if(REDUCED)return;
+    const el=tube.current;if(!el)return;
+    const r=el.getBoundingClientRect();
+    const id=++rid.current;
+    setRipples(p=>[...p.slice(-3),{id:id,x:e.clientX-r.left,y:e.clientY-r.top}]);
+  };
+  const waterStyle=REDUCED?undefined:{rotate:sTilt,scaleY:sSy,scaleX:sSx,y:sDy};
+  const firstName=session?String(memberName(session)||'MEMBER').split(' ')[0].toUpperCase().slice(0,10):'';
+  return <>
+    <div className="fixed top-4 inset-x-0 z-[85] pp pointer-events-none" style={{paddingTop:'env(safe-area-inset-top,0px)'}}>
+      <motion.div ref={tube} onPointerMove={onMove} onPointerDown={onDown} style={waterStyle}
+        className={`glass pointer-events-auto relative mx-auto flex max-w-[1080px] items-center justify-between gap-2 md:gap-3 rounded-full border border-bone/20 overflow-hidden transition-[height,padding,box-shadow] duration-500 ${scrolled&&!open?'h-12 px-3 md:px-4 shadow-[0_24px_60px_-24px_rgba(0,0,0,.9),inset_0_1px_0_0_rgba(244,241,234,.22),inset_0_-1px_0_0_rgba(16,14,12,.5)]':'h-14 px-3 md:px-5 shadow-[0_18px_48px_-20px_rgba(0,0,0,.8),inset_0_1px_0_0_rgba(244,241,234,.25),inset_0_-1px_0_0_rgba(16,14,12,.5)]'}`}>
+        <span aria-hidden="true" className="glass-sheen absolute inset-0 rounded-full pointer-events-none"/>
+        <span ref={light} aria-hidden="true" className="water-light absolute inset-0 rounded-full pointer-events-none"/>
+        <span aria-hidden="true" className="absolute inset-y-0 left-0 w-10 rounded-l-full bg-gradient-to-r from-ink/40 to-transparent pointer-events-none"/>
+        <span aria-hidden="true" className="absolute inset-y-0 right-0 w-10 rounded-r-full bg-gradient-to-l from-ink/40 to-transparent pointer-events-none"/>
+        {ripples.map(rp=>(
+          <motion.span key={rp.id} aria-hidden="true"
+            initial={{scale:0,opacity:.55}} animate={{scale:9,opacity:0}}
+            transition={{duration:.9,ease:'easeOut'}}
+            onAnimationComplete={()=>setRipples(p=>p.filter(x=>x.id!==rp.id))}
+            style={{left:rp.x,top:rp.y}}
+            className="absolute w-10 h-10 -ml-5 -mt-5 rounded-full border border-bone/50 pointer-events-none"/>
+        ))}
+        <button onClick={()=>go('top')} data-hover className="group relative flex min-w-0 items-center gap-2 sm:gap-3 min-h-[44px] rounded-full pl-1 pr-2 hover:bg-bone/10 transition-colors" aria-label="The Visual Archive — home">
+          <span className="overflow-hidden rounded-md shrink-0"><VAMark className="transition-transform duration-500 group-hover:-rotate-3 group-hover:scale-[1.06] h-6 w-6 sm:h-7 sm:w-7"/></span>
+          <span className="block truncate font-mono text-[8px] tracking-[.18em] text-bone whitespace-nowrap sm:text-[11px] sm:tracking-[.3em]">THE VISUAL ARCHIVE</span>
+        </button>
+        <div className="hidden lg:flex items-center gap-3 self-stretch px-5">
+          <span className="w-1.5 h-1.5 rounded-full bg-vermilion pulse" aria-hidden="true"/>
+          <span className="font-mono text-[10px] tracking-[.28em] text-bone/75 tnum">{current.n} / {current.name}</span>
+        </div>
+        <div className="relative flex shrink-0 items-center gap-1 md:gap-2">
+          {session?(
+            <button onClick={onSignOut} data-hover title="Sign out" aria-label={'Sign out '+firstName} className="hidden sm:flex items-center gap-2 rounded-full px-3 py-3 min-h-[44px] font-mono text-[10px] tracking-[.25em] text-bone/80 hover:text-vermilion hover:bg-bone/10 transition-colors">
+              <span className="w-1.5 h-1.5 rotate-45 bg-vermilion" aria-hidden="true"/>◆ {firstName}
+            </button>
+          ):(
+            <button onClick={onSignIn} data-hover aria-label="Sign in" className="hidden sm:flex rounded-full px-3 py-3 min-h-[44px] font-mono text-[10px] tracking-[.25em] text-bone/80 hover:text-vermilion hover:bg-bone/10 transition-colors">SIGN IN</button>
+          )}
+          <button onClick={()=>{SND.shutter();onRandom()}} data-hover aria-label="Random plate" title="Random plate" className="hidden md:block rounded-full px-3 py-3 min-h-[44px] font-mono text-[12px] text-bone/75 hover:text-vermilion hover:bg-bone/10 transition-colors">⚄</button>
+          <button onClick={()=>{setOpen(!open);if(open){SND.close()}else{SND.open()}}} aria-expanded={open} data-hover className="group flex items-center gap-2 sm:gap-3 rounded-full pl-2 sm:pl-3 pr-3 sm:pr-4 py-3 min-h-[44px] hover:bg-bone/10 transition-colors">
+            <span className="hidden min-[380px]:block font-mono text-[11px] tracking-[.3em] text-bone group-hover:text-vermilion transition-colors">{open?'CLOSE':'MENU'}</span>
+            <span className="relative w-6 h-3">
+              <span className={`absolute left-0 h-[2px] bg-bone rounded-full transition-all duration-300 group-hover:bg-vermilion ${open?'w-6 top-1/2 rotate-45':'w-6 top-0 group-hover:w-4'}`}/>
+              <span className={`absolute right-0 h-[2px] bg-bone rounded-full transition-all duration-300 group-hover:bg-vermilion ${open?'w-6 top-1/2 -rotate-45':'w-6 top-full -translate-y-[2px] group-hover:w-4'}`}/>
+            </span>
+          </button>
+        </div>
+      </motion.div>
+    </div>
+    <AnimatePresence>{open&&<motion.nav
+      initial={{clipPath:'inset(0 0 100% 0)'}} animate={{clipPath:'inset(0 0 0% 0)'}} exit={{clipPath:'inset(0 0 100% 0)',transition:{duration:.55,ease:[.87,0,.13,1]}}}
+      transition={{duration:.95,ease:[.87,0,.13,1]}}
+      className="fixed inset-0 z-[86] bg-paper pp flex flex-col" style={{paddingTop:'env(safe-area-inset-top,0px)'}} aria-label="Index">
+      <div className="h-16 flex items-center justify-between shrink-0">
+        <span className="flex items-center gap-3">
+          <VAMark className="h-8 w-8"/>
+          <span className="font-mono text-[11px] tracking-[.3em] text-cod">INDEX — ENTRANCE + 05 ROOMS</span>
+        </span>
+        <button onClick={()=>{setOpen(false);SND.close()}} autoFocus data-hover className="group flex items-center gap-3 py-3 min-h-[44px]" aria-label="Close menu">
+          <span className="font-mono text-[11px] tracking-[.3em] text-cod group-hover:text-vermilion transition-colors">CLOSE</span>
+          <span className="relative w-6 h-3" aria-hidden="true">
+            <span className="absolute left-0 top-1/2 w-6 h-[2px] bg-cod rotate-45 group-hover:bg-vermilion transition-colors"/>
+            <span className="absolute left-0 top-1/2 w-6 h-[2px] bg-cod -rotate-45 group-hover:bg-vermilion transition-colors"/>
+          </span>
+        </button>
+      </div>
+      <div className="flex-1 flex flex-col justify-center gap-1 md:gap-2 -mx-[var(--pad)] overflow-y-auto">
+        {[{id:'top',n:'00',name:'ENTRANCE'},...SECTIONS].map((s,i)=>(
+          <motion.button key={s.id} onClick={()=>go(s.id)}
+            initial={{y:70,opacity:0}} animate={{y:0,opacity:1}}
+            transition={{delay:.35+i*.07,duration:.65,ease:[.16,1,.3,1]}}
+            data-hover className="group flex items-baseline gap-4 md:gap-8 px-[var(--pad)] py-2 md:py-3 text-left min-h-[44px] hover:bg-cod transition-colors">
+            <span className="font-mono text-[11px] tracking-[.25em] text-cod/60 w-8 tnum">{s.n}</span>
+            <span className="font-display uppercase text-[clamp(2rem,8vw,5rem)] leading-none text-cod group-hover:text-white group-hover:translate-x-3 transition-all duration-300">{s.name}</span>
+            <span className="ml-auto font-mono text-[10px] tracking-[.25em] text-cod/50 hidden sm:block">↗</span>
+          </motion.button>))}
+        <motion.button onClick={members}
+          initial={{y:70,opacity:0}} animate={{y:0,opacity:1}}
+          transition={{delay:.35+6*.07,duration:.65,ease:[.16,1,.3,1]}}
+          data-hover className="group flex items-baseline gap-4 md:gap-8 px-[var(--pad)] py-2 md:py-3 text-left min-h-[44px] hover:bg-vermilion transition-colors">
+          <span className="font-mono text-[11px] tracking-[.25em] text-cod/60 w-8">◆</span>
+          <span className="font-display uppercase text-[clamp(1.6rem,6vw,3.4rem)] leading-none text-vermilion group-hover:text-cod group-hover:translate-x-3 transition-all duration-300">{session?'SIGN OUT':'MEMBERS — SIGN IN'}</span>
+          <span className="ml-auto font-mono text-[10px] tracking-[.25em] text-cod/50 hidden sm:block">{session?firstName:'↗'}</span>
+        </motion.button>
+      </div>
+      <motion.div initial={{opacity:0}} animate={{opacity:1}} transition={{delay:.85,duration:.6}} className="pb-8 pt-4 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[11px] tracking-[.2em] text-cod/70 border-t border-cod/15">
+        <span>IMAGES: WIKIMEDIA COMMONS + OPENVERSE — CC / PUBLIC DOMAIN</span>
+        <span className="ml-auto tnum">© 2026</span>
+      </motion.div>
+    </motion.nav>}</AnimatePresence>
+  </>;
+}
+
+/* ================= LOGIN VIEW (in-file, #login) ================= */
+function LoginBackdrop(){
+  const [plates,setPlates]=useState([]);
+  const [idx,setIdx]=useState(0);
+  useEffect(()=>{let on=true;LOGIN_QUERIES.forEach(q=>fetchPlate(q).then(pl=>{if(on)setPlates(p=>p.concat([pl]))}).catch(()=>{}));return()=>{on=false}},[]);
+  useEffect(()=>{
+    if(REDUCED||plates.length<2)return;
+    const t=setInterval(()=>setIdx(i=>(i+1)%plates.length),3200);
+    return()=>clearInterval(t);
+  },[plates.length]);
+  const active=plates[idx];
+  return <div className="absolute inset-0 overflow-hidden" aria-hidden="true">
+    {plates.map((p,i)=>(
+      <motion.img key={p.id} src={p.thumb} alt=""
+        initial={{opacity:0}}
+        animate={{opacity:i===idx?0.5:0,scale:i===idx?1.06:1}}
+        transition={{opacity:{duration:1,ease:'easeInOut'},scale:{duration:3.2,ease:'linear'}}}
+        className="duo absolute inset-0 h-full w-full object-cover"/>
+    ))}
+    <div className="absolute inset-0 bg-ink/45"/>
+    <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/25 to-ink/70"/>
+    <div className="absolute inset-0 bg-gradient-to-r from-transparent via-transparent to-ink lg:to-ink/95"/>
+    {active&&<p className="absolute bottom-3 left-0 right-0 pp font-mono text-[8px] tracking-[.22em] text-bone/60 truncate">BACKDROP — © {active.creator} · {active.license}</p>}
+  </div>;
+}
+function LoginField(props){
+  return <div className="relative">
+    <label htmlFor={props.id} className="block font-mono text-[10px] tracking-[.28em] text-cod/60 pb-2">{props.label}</label>
+    <div className="relative">
+      <input id={props.id} type={props.type||'text'} value={props.value} onChange={props.onChange}
+        onKeyUp={props.onKeyUp} autoComplete={props.autoComplete||'off'} placeholder={props.placeholder||''}
+        className={'w-full bg-transparent border-b-2 font-mono text-sm text-cod placeholder-cod/35 outline-none pb-3 pt-1 transition-colors '+(props.error?'border-vermilion':'border-cod/25 focus:border-vermilion')+(props.padRight?' pr-16':'')}/>
+      {props.trailing}
+    </div>
+    {props.error&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion pt-2">{props.error}</p>}
+    {props.hint&&!props.error&&<p className="font-mono text-[9px] tracking-[.2em] text-cod/45 pt-2">{props.hint}</p>}
+  </div>;
+}
+function strengthScore(v){
+  let s=0;
+  if(v&&v.length>=6)s++;
+  if(v&&v.length>=10)s++;
+  if(v&&/[A-Z]/.test(v)&&/[a-z]/.test(v))s++;
+  if(v&&/[0-9]/.test(v)&&/[^A-Za-z0-9]/.test(v))s++;
+  return s;
+}
+const STRENGTH_LABEL=['TOO SHORT','WEAK','FAIR','GOOD','STRONG'];
+function LoginCard({onGranted,onExit}){
+  const [mode,setMode]=useState('in');
+  const [name,setName]=useState('');
+  const [email,setEmail]=useState('');
+  const [pass,setPass]=useState('');
+  const [showPass,setShowPass]=useState(false);
+  const [caps,setCaps]=useState(false);
+  const [terms,setTerms]=useState(false);
+  const [errors,setErrors]=useState({});
+  const [shake,setShake]=useState(false);
+  const [loading,setLoading]=useState(false);
+  const [granted,setGranted]=useState(false);
+  const [resetSent,setResetSent]=useState(false);
+  const [note,setNote]=useState('');
+  const [ripples,setRipples]=useState([]);
+  const rid=useRef(0);
+  const wrap=useRef(null);
+  const rx=useMotionValue(0),ry=useMotionValue(0);
+  const srx=useSpring(rx,{stiffness:120,damping:16});
+  const sry=useSpring(ry,{stiffness:120,damping:16});
+  const score=strengthScore(pass);
+  const onMove=useCallback(e=>{
+    if(REDUCED||!FINE)return;
+    const el=wrap.current;if(!el)return;
+    const r=el.getBoundingClientRect();
+    ry.set(clampN(((e.clientX-r.left)/r.width-0.5)*2,-1,1)*2.2);
+    rx.set(clampN(((e.clientY-r.top)/r.height-0.5)*2,-1,1)*-2.2);
+  },[]);
+  const onLeave=useCallback(()=>{rx.set(0);ry.set(0)},[]);
+  const fail=useCallback(errs=>{
+    setErrors(errs);setShake(true);setNote('');
+    setTimeout(()=>setShake(false),520);
+  },[]);
+  const finish=useCallback(session=>{
+    setGranted(true);
+    setTimeout(()=>{onGranted(session)},950);
+  },[onGranted]);
+  const submitIn=useCallback(e=>{
+    e.preventDefault();
+    const errs={};
+    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
+    if(pass.length<6)errs.pass='MIN 6 CHARACTERS';
+    if(Object.keys(errs).length){fail(errs);return}
+    setErrors({});setLoading(true);setNote('');
+    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
+    supabaseClient.auth.signInWithPassword({email:email.trim(),password:pass}).then(({data,error})=>{
+      setLoading(false);
+      if(error){setNote(error.message.toUpperCase());return}
+      if(data.session)finish(data.session);
+    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
+  },[email,pass,fail,finish]);
+  const submitUp=useCallback(e=>{
+    e.preventDefault();
+    const errs={};
+    if(name.trim().length<2)errs.name='TELL US YOUR NAME';
+    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
+    if(pass.length<6)errs.pass='MIN 6 CHARACTERS';
+    if(!terms)errs.terms='ACCEPT THE HOUSE RULES';
+    if(Object.keys(errs).length){fail(errs);return}
+    setErrors({});setLoading(true);setNote('');
+    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
+    supabaseClient.auth.signUp({email:email.trim(),password:pass,options:{data:{name:name.trim()},emailRedirectTo:authRedirectUrl()}}).then(({data,error})=>{
+      setLoading(false);
+      if(error){setNote(error.message.toUpperCase());return}
+      if(data.session){finish(data.session);return}
+      setNote('CHECK YOUR EMAIL TO CONFIRM YOUR ACCOUNT');
+    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
+  },[name,email,pass,terms,fail,finish]);
+  const submitReset=useCallback(e=>{
+    e.preventDefault();
+    const errs={};
+    if(!emailOk(email))errs.email='ENTER A VALID EMAIL';
+    if(Object.keys(errs).length){fail(errs);return}
+    setErrors({});setLoading(true);
+    if(!supabaseClient){setLoading(false);setNote('AUTH SERVICE DID NOT LOAD');return}
+    supabaseClient.auth.resetPasswordForEmail(email.trim(),{redirectTo:authRedirectUrl()}).then(({error})=>{
+      setLoading(false);
+      if(error){setNote(error.message.toUpperCase());return}
+      setResetSent(true);
+    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
+  },[email,fail]);
+  const onPassKey=useCallback(e=>{
+    try{setCaps(e.getModifierState?e.getModifierState('CapsLock'):false)}catch(err){setCaps(false)}
+  },[]);
+  const onButtonDown=useCallback(e=>{
+    if(REDUCED)return;
+    const el=e.currentTarget;
+    const r=el.getBoundingClientRect();
+    const id=++rid.current;
+    setRipples(p=>p.concat([{id:id,x:e.clientX-r.left,y:e.clientY-r.top}]).slice(-4));
+  },[]);
+  const switchMode=useCallback(m=>{
+    setMode(m);setErrors({});setNote('');setResetSent(false);setShowPass(false);
+  },[]);
+  const onSocial=useCallback(()=>{
+    if(!supabaseClient){setNote('AUTH SERVICE DID NOT LOAD');return}
+    setLoading(true);setNote('');
+    supabaseClient.auth.signInWithOAuth({provider:'google',options:{redirectTo:authRedirectUrl()}}).then(({error})=>{
+      if(error){setLoading(false);setNote(error.message.toUpperCase())}
+    }).catch(()=>{setLoading(false);setNote('THE AUTH SERVICE DID NOT ANSWER')});
+  },[]);
+  const passToggle=<button type="button" onClick={()=>setShowPass(v=>!v)} className="absolute right-0 top-1 font-mono text-[9px] tracking-[.25em] text-cod/55 hover:text-vermilion transition-colors min-h-[32px]">{showPass?'HIDE':'SHOW'}</button>;
+  return <div ref={wrap} onPointerMove={onMove} onPointerLeave={onLeave} style={{perspective:1000}} className="w-full max-w-[440px]">
+    <motion.div style={{rotateX:srx,rotateY:sry}} className={'relative bg-paper text-cod border-2 border-cod shadow-[10px_10px_0_0_#FC4C13] p-6 md:p-8 '+(shake?'shake':'')}>
+      <div className="flex items-center justify-between gap-4 pb-6">
+        <span className="flex items-center gap-3">
+          <VAMark className="h-8 w-8"/>
+          <span className="font-mono text-[10px] tracking-[.3em] text-cod">THE VISUAL ARCHIVE</span>
+        </span>
+        <span className="flex items-center gap-2 font-mono text-[9px] tracking-[.25em] text-cod/50"><span className="w-1.5 h-1.5 rounded-full bg-vermilion pulse"/>VAULT LOCKED</span>
+      </div>
+      <div className="flex border border-cod/25 mb-7" role="tablist" aria-label="Auth mode">
+        {[['in','SIGN IN'],['up','REQUEST ACCESS']].map(([v,l])=>(
+          <button key={v} role="tab" aria-selected={mode===v} onClick={()=>switchMode(v)}
+            className={'flex-1 font-mono text-[10px] tracking-[.25em] py-3 min-h-[44px] transition-colors '+(mode===v?'bg-cod text-bone':'text-cod/60 hover:text-cod')}>{l}</button>
+        ))}
+      </div>
+      <AnimatePresence mode="wait">
+      {resetSent?(
+        <motion.div key="rs" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} className="text-center py-6">
+          <p className="font-display uppercase text-3xl text-cod leading-none">LINK SENT.</p>
+          <p className="font-mono text-[10px] tracking-[.22em] text-cod/60 pt-3 leading-relaxed">CHECK {String(email).trim().toUpperCase()} FOR THE<br/>VAULT KEY — IT EXPIRES IN 30 MIN.</p>
+          <button onClick={()=>switchMode('in')} className="mt-7 font-mono text-[10px] tracking-[.25em] text-vermilion border border-vermilion px-5 py-3 min-h-[44px] hover:bg-vermilion hover:text-bone transition-colors">← BACK TO SIGN IN</button>
+        </motion.div>
+      ):(mode==='in'?(
+        <motion.form key="in" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitIn} className="space-y-6" noValidate>
+          <LoginField id="li-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com"
+            value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
+          <LoginField id="li-pass" label="PASSWORD" type={showPass?'text':'password'} autoComplete="current-password" placeholder="••••••••" padRight={true}
+            value={pass} onChange={e=>setPass(e.target.value)} onKeyUp={onPassKey} error={errors.pass} trailing={passToggle}
+            hint={caps?'⇪ CAPS LOCK IS ON':''}/>
+          <div className="flex items-center justify-between gap-3 pt-1">
+            <span className="flex items-center gap-2 min-h-[32px]">
+              <span className="w-4 h-4 border-2 border-cod/40 flex items-center justify-center text-[9px] text-vermilion">✓</span>
+              <span className="font-mono text-[9px] tracking-[.22em] text-cod/60">KEEP ME SIGNED IN</span>
+            </span>
+            <button type="button" onClick={()=>switchMode('reset')} className="font-mono text-[9px] tracking-[.22em] text-cod/60 hover:text-vermilion transition-colors min-h-[32px]">FORGOT KEY?</button>
+          </div>
+          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
+            className="relative overflow-hidden w-full bg-vermilion text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#1D1D1D] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#1D1D1D] transition-all disabled:opacity-60">
+            {ripples.map(rp=><motion.span key={rp.id} initial={{scale:0,opacity:.5}} animate={{scale:10,opacity:0}} transition={{duration:.7,ease:'easeOut'}} style={{left:rp.x,top:rp.y}} className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full bg-bone/60 pointer-events-none"/>)}
+            {loading?'DEVELOPING ACCESS…':'OPEN THE VAULT ↗'}
+          </button>
+        </motion.form>
+      ):(mode==='up'?(
+        <motion.form key="up" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitUp} className="space-y-6" noValidate>
+          <LoginField id="su-name" label="NAME" placeholder="How we credit you" value={name} onChange={e=>setName(e.target.value)} error={errors.name}/>
+          <LoginField id="su-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com" value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
+          <div>
+            <LoginField id="su-pass" label="PASSWORD" type={showPass?'text':'password'} autoComplete="new-password" placeholder="MIN 6 CHARACTERS" padRight={true}
+              value={pass} onChange={e=>setPass(e.target.value)} onKeyUp={onPassKey} error={errors.pass} trailing={passToggle}
+              hint={caps?'⇪ CAPS LOCK IS ON':''}/>
+            <div className="flex items-center gap-2 pt-3">
+              <div className="flex gap-1 flex-1">{[0,1,2,3].map(i=>(<span key={i} className={'h-1 flex-1 transition-colors '+(i<score?(score<=2?'bg-vermilion':score===3?'bg-ember':'bg-cod'):'bg-cod/15')}/>))}</div>
+              <span className="font-mono text-[9px] tracking-[.2em] text-cod/55 w-24 text-right tnum">{STRENGTH_LABEL[score]}</span>
+            </div>
+          </div>
+          <button type="button" onClick={()=>setTerms(v=>!v)} aria-pressed={terms} className="flex items-start gap-3 text-left min-h-[32px]">
+            <span className={'mt-[2px] w-4 h-4 shrink-0 border-2 flex items-center justify-center text-[9px] transition-colors '+(terms?'border-vermilion bg-vermilion text-bone':'border-cod/40 text-transparent')}>✓</span>
+            <span className="font-mono text-[9px] tracking-[.2em] text-cod/60 leading-relaxed">I WILL CREDIT EVERY PLATE I TAKE — THE ONLY PRICE THIS ARCHIVE ASKS.</span>
+          </button>
+          {errors.terms&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion -mt-3">{errors.terms}</p>}
+          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
+            className="relative overflow-hidden w-full bg-cod text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#FC4C13] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#FC4C13] transition-all disabled:opacity-60">
+            {ripples.map(rp=><motion.span key={rp.id} initial={{scale:0,opacity:.5}} animate={{scale:10,opacity:0}} transition={{duration:.7,ease:'easeOut'}} style={{left:rp.x,top:rp.y}} className="absolute w-8 h-8 -ml-4 -mt-4 rounded-full bg-vermilion/60 pointer-events-none"/>)}
+            {loading?'PRINTING YOUR KEY…':'REQUEST ACCESS ↗'}
+          </button>
+        </motion.form>
+      ):(
+        <motion.form key="rz" initial={{opacity:0,y:14}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-10}} transition={{duration:.3}} onSubmit={submitReset} className="space-y-6" noValidate>
+          <p className="font-display uppercase text-2xl text-cod leading-tight">LOST THE KEY?</p>
+          <p className="font-mono text-[10px] tracking-[.22em] text-cod/60 leading-relaxed -mt-3">TYPE YOUR EMAIL — WE WILL SEND A FRESH KEY TO THE DOOR.</p>
+          <LoginField id="rs-email" label="EMAIL" type="email" autoComplete="email" placeholder="you@studio.com" value={email} onChange={e=>setEmail(e.target.value)} error={errors.email}/>
+          <button type="submit" disabled={loading} onPointerDown={onButtonDown}
+            className="relative overflow-hidden w-full bg-vermilion text-bone font-display uppercase text-xl tracking-wide py-4 min-h-[52px] border-2 border-cod shadow-[6px_6px_0_0_#1D1D1D] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#1D1D1D] transition-all disabled:opacity-60">
+            {loading?'SEARCHING THE DRAWER…':'SEND RESET KEY ↗'}
+          </button>
+          <button type="button" onClick={()=>switchMode('in')} className="w-full font-mono text-[10px] tracking-[.25em] text-cod/60 hover:text-vermilion transition-colors min-h-[40px]">← BACK TO SIGN IN</button>
+        </motion.form>
+      )))}
+      </AnimatePresence>
+      {!resetSent&&<div className="pt-7 space-y-4">
+        <div className="flex items-center gap-3"><span className="h-px bg-cod/15 flex-1"/><span className="font-mono text-[9px] tracking-[.25em] text-cod/45">OR</span><span className="h-px bg-cod/15 flex-1"/></div>
+        <button type="button" onClick={onSocial} disabled={loading}
+          className="w-full font-mono text-[10px] tracking-[.25em] text-cod/70 border border-cod/25 py-3 min-h-[44px] hover:bg-cod hover:text-bone transition-colors">GOOGLE ↗</button>
+        {note&&<p className="font-mono text-[9px] tracking-[.2em] text-vermilion">{note}</p>}
+        <button type="button" onClick={onExit} className="block w-full text-center font-mono text-[10px] tracking-[.25em] text-cod/60 hover:text-vermilion transition-colors min-h-[40px] pt-1">CONTINUE AS GUEST →</button>
+      </div>}
+      <AnimatePresence>
+      {granted&&(
+        <motion.div initial={{opacity:0}} animate={{opacity:1}} className="absolute inset-0 z-10 bg-paper/95 flex flex-col items-center justify-center gap-5">
+          <motion.p initial={{scale:1.6,rotate:-16,opacity:0}} animate={{scale:1,rotate:-8,opacity:1}} transition={{type:'spring',stiffness:260,damping:14}}
+            className="border-4 border-vermilion text-vermilion font-display uppercase text-3xl md:text-4xl px-6 py-3">ACCESS GRANTED</motion.p>
+          <p className="font-mono text-[10px] tracking-[.3em] text-cod/60 text-center px-6">WELCOME, {String(name||String(email||'').split('@')[0]).toUpperCase()} — OPENING THE VAULT…</p>
+        </motion.div>
+      )}
+      </AnimatePresence>
+    </motion.div>
+    <p className="font-mono text-[9px] tracking-[.22em] text-taupe text-center pt-5 leading-relaxed">SECURE ACCESS POWERED BY SUPABASE.<br/><button onClick={onExit} className="text-bone/80 hover:text-vermilion transition-colors">BACK TO ARCHIVE</button></p>
+  </div>;
+}
+function LoginView({onGranted,onExit}){
+  return <div className="min-h-screen bg-ink text-bone font-body relative">
+    <button onClick={onExit} data-hover className="fixed top-4 right-4 z-40 font-mono text-[10px] tracking-[.28em] text-bone/70 hover:text-vermilion transition-colors bg-ink/60 border border-bone/20 rounded-full px-4 py-3 min-h-[40px] backdrop-blur-md">← BACK TO ARCHIVE</button>
+    <div className="relative z-10 grid lg:grid-cols-[1.15fr_1fr] min-h-screen">
+      <section className="relative min-h-[46vh] lg:min-h-screen overflow-hidden flex flex-col justify-between">
+        <LoginBackdrop/>
+        <div className="relative z-10 pp pt-8 lg:pt-12">
+          <p className="font-mono text-[10px] tracking-[.3em] text-bone/80"><Scramble text="MEMBERS ENTRANCE — EST. 2026"/></p>
+        </div>
+        <div className="relative z-10 pp py-10 lg:py-0 lg:flex-1 lg:flex flex-col justify-center">
+          <h1 className="font-display uppercase leading-[.9] text-[clamp(2.8rem,8vw,7.5rem)] text-bone drop-shadow-[0_2px_18px_rgba(16,14,12,.7)]">
+            <CharLines lines={[{t:'THE VAULT'},{t:'OPENS'},{t:'FOR YOU.',cls:'text-vermilion'}]}/>
+          </h1>
+          <p className="mt-6 max-w-[46ch] text-sm md:text-base leading-relaxed text-bone/80 reveal is-in">Sign in to keep your searches, filed notes and developed plates waiting for you behind the door. Light, kept in order — and kept for you.</p>
+          <div className="mt-8 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[10px] tracking-[.25em] text-bone/70 tnum reveal is-in">
+            <span>∞ PLATES</span><span>05 ROOMS</span><span>0 TRACKERS</span><span>100% FREE-TO-USE</span>
+          </div>
+        </div>
+        <div className="relative z-10">
+          <Marquee speed={24} className="bg-vermilion">
+            {['SIGN IN','SEARCH','DEVELOP','PRINT','REPEAT'].map(w=>(
+              <span key={w} className="flex items-center"><span className="font-display uppercase text-ink text-lg md:text-2xl px-5">{w}</span><span className="text-bone text-lg md:text-xl">✳</span></span>
+            ))}
+          </Marquee>
+        </div>
+      </section>
+      <section className="relative flex items-center justify-center pp py-14 lg:py-10" style={{background:'radial-gradient(700px 420px at 70% 20%, rgba(252,76,19,.07), transparent 60%)'}}>
+        <LoginCard onGranted={onGranted} onExit={onExit}/>
+      </section>
+    </div>
+  </div>;
+}
+
+/* ================= HERO ================= */
+function Hero(){
+  const ref=useRef(null);
+  const [plates,setPlates]=useState([]);
+  const [idx,setIdx]=useState(0);
+  const [visible,setVisible]=useState(true);
+  const {scrollYProgress}=useScroll({target:ref,offset:['start start','end start']});
+  const y=useTransform(scrollYProgress,[0,1],[0,REDUCED?0:110]);
+  const op=useTransform(scrollYProgress,[0,.75],[1,0]);
+  useEffect(()=>{let on=true;HERO_QUERIES.forEach(q=>searchImages(q,1,'all').then(r=>{if(on&&r.items[0])setPlates(p=>[...p,r.items[0]])}).catch(()=>{}));return()=>{on=false}},[]);
+  useEffect(()=>{
+    const el=ref.current;if(!el)return;
+    const io=new IntersectionObserver(([e])=>setVisible(e.isIntersecting),{threshold:.1});
+    io.observe(el);return()=>io.disconnect();
+  },[]);
+  useEffect(()=>{
+    if(REDUCED||plates.length<2||!visible)return;
+    const t=setInterval(()=>setIdx(i=>(i+1)%plates.length),2500);
+    return()=>clearInterval(t);
+  },[plates.length,visible]);
+  const active=plates[idx];
+  return <section id="top" ref={ref} className="relative bg-ink overflow-hidden">
+    <div className="absolute inset-0 pointer-events-none" aria-hidden="true">
+      {plates.map((p,i)=>(
+        <motion.div key={p.id}
+          initial={{opacity:0}}
+          animate={{opacity:i===idx?0.68:0, scale:i===idx?1.07:1.0}}
+          transition={{opacity:{duration:.85,ease:'easeInOut'},scale:{duration:2.5,ease:'linear'}}}
+          className="absolute inset-0">
+          <Photo src={p.thumb} alt={p.title} className="absolute inset-0 w-full h-full" imgClass="duo"/>
+        </motion.div>
+      ))}
+      <div className="absolute inset-0 bg-ink/35"/>
+      <div className="absolute inset-0 bg-gradient-to-t from-ink via-ink/25 to-ink/70"/>
+    </div>
+    <motion.div style={{y,opacity:op}} className="relative z-[1] min-h-[100svh] flex flex-col pt-[calc(var(--nav-h)+3.5rem)]">
+      <p className="pp font-mono text-[11px] tracking-[.3em] text-bone/80"><Scramble text="A SEARCHABLE ARCHIVE OF FREE-TO-USE PHOTOGRAPHY"/></p>
+      <div className="pp flex-1 flex flex-col justify-center py-12">
+        <h1 style={SKEW_STYLE} className="skewable font-display uppercase leading-[.9] text-[clamp(3.2rem,14vw,12.5rem)] text-bone drop-shadow-[0_2px_18px_rgba(16,14,12,.65)]">
+          <CharLines lines={[{t:'LIGHT,'},{t:'KEPT'},{t:'IN ORDER.',cls:'text-vermilion'}]}/>
+        </h1>
+        <div className="mt-12 grid md:grid-cols-12 gap-10 md:gap-6 items-end">
+          <p className="md:col-span-6 text-sm md:text-base leading-relaxed text-bone/85 reveal">Search millions of photographs released under Creative Commons and public domain. Every plate is credited, every license named. Take what you need — keep the name attached.</p>
+          <div className="md:col-span-4 md:col-start-9 reveal flex md:justify-end items-center gap-3" style={{transitionDelay:'.15s'}}>
+            <span className="font-mono text-[9px] tracking-[.3em] text-bone/80 tnum">BG {String(idx+1).padStart(2,'0')}/{String(plates.length||1).padStart(2,'0')}</span>
+            <div className="flex gap-1.5" role="tablist" aria-label="Hero backdrop plates">
+              {plates.map((p,i)=>(<button key={p.id} role="tab" aria-selected={i===idx} onClick={()=>{setIdx(i);SND.click()}} data-hover aria-label={`Backdrop plate ${i+1}`} className={`h-[3px] transition-all duration-500 ${i===idx?'w-8 bg-vermilion':'w-4 bg-bone/30 hover:bg-bone/70'}`}/>))}
+            </div>
+          </div>
+        </div>
+      </div>
+      <div className="pp flex items-end justify-between gap-4 pb-3">
+        <AnimatePresence mode="wait">
+          <motion.p key={idx} initial={{opacity:0,y:6}} animate={{opacity:1,y:0}} exit={{opacity:0,y:-6}} transition={{duration:.3}} className="font-mono text-[9px] tracking-[.2em] text-bone/75 truncate max-w-[60vw]">
+            {active?`BACKDROP — © ${active.creator} · ${active.license} · ${active.srcName.toUpperCase()}`:'DEVELOPING BACKDROP…'}
+          </motion.p>
+        </AnimatePresence>
+      </div>
+      <div className="pp flex items-end justify-between pb-6">
+        <p className="font-mono text-[11px] tracking-[.3em] text-bone tnum">05 ROOMS — ∞ PLATES</p>
+        <p className="font-mono text-[11px] tracking-[.3em] text-bone flex items-center gap-2">SCROLL <motion.span animate={REDUCED?{}:{y:[0,6,0]}} transition={{duration:1.6,repeat:Infinity}}>↓</motion.span></p>
+      </div>
+    </motion.div>
+    <Marquee speed={26} className="relative z-[1] bg-vermilion" trackClass="py-3">
+      {['SEARCH','GENRES','DARKROOM','CONTACT SHEET','CORRESPONDENCE'].map(w=>
+        <span key={w} className="flex items-center"><span className="font-display uppercase text-ink text-xl md:text-3xl px-6">{w}</span><span className="text-bone text-xl md:text-2xl">✳</span></span>)}
+    </Marquee>
+  </section>;
+}
+
+/* ================= 01 SEARCH ================= */
+function SearchSection({onResults}){
+  const [q,setQ]=useState('LIGHT');const [input,setInput]=useState('LIGHT');
+  const [lic,setLic]=useState('all');
+  const [page,setPage]=useState(1);
+  const [items,setItems]=useState([]);
+  const [meta,setMeta]=useState({source:'',total:0});
+  const [state,setState]=useState('load');
+  const run=useCallback(async(query,pg,license,append)=>{
+    setState('load');
+    try{
+      const r=await searchImages(query,pg,license);
+      setItems(prev=>append?prev.concat(r.items):r.items);
+      setMeta({source:r.source,total:r.total});
+      setState(r.items.length?'ok':'empty');
+      if(!append)onResults({q:query,items:r.items});
+    }catch(e){setState('err')}
+  },[onResults]);
+  useEffect(()=>{setPage(1);run(q,1,lic,false)},[q,lic]);
+  const submit=v=>{const t=(v||input).trim();if(!t)return;SND.shutter();setQ(t.toUpperCase());setInput(t.toUpperCase())};
+  const loadMore=()=>{const np=page+1;setPage(np);run(q,np,lic,true);SND.click()};
+  return <section id="search" className="bg-ink pt-28 md:pt-40 pb-24">
+    <SectionHead index="01" name="THE SEARCH" count={meta.total?meta.total.toLocaleString()+' PLATES MATCH':'OPEN ARCHIVE'} lines={[{t:'ASK FOR'},{t:'ANY LIGHT.',cls:'text-vermilion'}]} blurb="Type anything — fog, neon, harbours, hands. Results come from Wikimedia Commons and Openverse: free to use, credited, licensed."/>
+    <div className="pp max-w-[1400px] mx-auto">
+      <form onSubmit={e=>{e.preventDefault();submit()}} className="flex items-end gap-4 border-b-2 border-bone/25 focus-within:border-vermilion transition-colors pb-3">
+        <label htmlFor="q" className="font-mono text-[11px] tracking-[.3em] text-taupe shrink-0 pb-1">Q /</label>
+        <input id="q" value={input} onChange={e=>setInput(e.target.value)} placeholder="SEARCH THE COMMONS — TRY ‘FOG’…" data-hover
+          className="w-full bg-transparent outline-none font-display uppercase text-[clamp(1.4rem,4vw,3rem)] leading-none text-bone placeholder-bone/25 caret-vermilion"/>
+        <button type="submit" data-hover className="font-mono text-[11px] tracking-[.3em] text-vermilion pb-1 min-h-[44px] shrink-0">SEARCH ↵</button>
+      </form>
+      <div className="flex flex-wrap items-center gap-2 pt-5">
+        {QUICK.map(w=><button key={w} onClick={()=>submit(w)} data-hover className={`font-mono text-[10px] tracking-[.22em] px-3 py-2 min-h-[36px] border transition-colors ${q===w?'border-vermilion text-vermilion':'border-bone/20 text-taupe hover:text-bone hover:border-bone/50'}`}>{w}</button>)}
+        <span className="w-px h-6 bg-bone/20 mx-2 hidden sm:block" aria-hidden="true"/>
+        {[['all','ALL LICENSES'],['cc0','CC0 / PD'],['commercial','COMMERCIAL USE']].map(([v,l])=>
+          <button key={v} onClick={()=>{setLic(v);SND.click()}} aria-pressed={lic===v} data-hover className={`font-mono text-[10px] tracking-[.22em] px-3 py-2 min-h-[36px] border transition-colors ${lic===v?'border-vermilion bg-vermilion text-bone':'border-bone/20 text-taupe hover:text-bone'}`}>{l}</button>)}
+        <span className="ml-auto font-mono text-[10px] tracking-[.22em] text-taupe tnum hidden md:block">VIA {meta.source||'…'}</span>
+      </div>
+      {state==='load'&&<div className="columns-1 sm:columns-2 lg:columns-3 gap-5 pt-10">{[0,1,2,3,4,5].map(i=><div key={i} className="mb-5 break-inside-avoid animate-pulse bg-ink2" style={{height:220+(i%3)*90}}/>)}</div>}
+      {state==='err'&&<div className="pt-16 text-center"><p className="font-display uppercase text-2xl text-bone">THE ARCHIVE DID NOT ANSWER.</p><button onClick={()=>run(q,1,lic,false)} data-hover className="mt-5 font-mono text-[11px] tracking-[.3em] text-vermilion border border-vermilion px-5 py-3 min-h-[44px]">RETRY ↻</button></div>}
+      {state==='empty'&&<p className="pt-16 font-mono text-[12px] tracking-[.25em] text-taupe">NO PLATES UNDER THAT LIGHT — TRY ANOTHER WORD.</p>}
+      {state==='ok'&&<>
+        <div className="columns-1 sm:columns-2 lg:columns-3 gap-5 pt-10">
+          {items.map((it,i)=>{
+            const ratio=RATIOS[i%RATIOS.length];
+            return (
+            <motion.figure key={it.id+i}
+              initial={{opacity:0,y:26}}
+              animate={{opacity:1,y:0}}
+              transition={{duration:.65,ease:[.16,1,.3,1],delay:REDUCED?0:(i%24)*0.035}}
+              className="mb-5 break-inside-avoid group">
+              <button onClick={()=>{SND.pop();openLightbox(it)}} data-hover aria-label={`Open ${it.title} by ${it.creator}`} className="block w-full text-left">
+                <Photo src={it.thumb} alt={it.title} className={`w-full ${ratio} border border-bone/15 group-hover:border-vermilion transition-colors`} imgClass="duo"/>
+              </button>
+              <figcaption className="pt-2 pb-1">
+                <p className="font-display uppercase text-base md:text-lg text-bone leading-none truncate">{it.title}</p>
+                <Credit item={it} className="pt-1"/>
+              </figcaption>
+            </motion.figure>);})}
+        </div>
+        <div className="flex justify-center pt-6">
+          <Mag strength={6}><button onClick={loadMore} disabled={state==='load'} data-hover className="font-mono text-[11px] tracking-[.3em] text-bone border border-bone/30 px-6 py-4 min-h-[44px] hover:border-vermilion hover:text-vermilion transition-colors disabled:opacity-50">{state==='load'?'DEVELOPING…':'LOAD 24 MORE ↓'}</button></Mag>
+        </div>
+      </>}
+    </div>
+  </section>;
+}
+
+/* ================= 02 GENRES ================= */
+function GenreCard({g,index,total,img}){
+  const slot=useRef(null);
+  const {scrollYProgress:exit}=useScroll({target:slot,offset:['start start','end start']});
+  const scale=REDUCED?1:useTransform(exit,[0,1],[1,.93]);
+  const dim=useTransform(exit,[0,1],[0,.45]);
+  return <div ref={slot} className="h-[100svh] sticky top-0 flex items-center justify-center pp py-4" style={{zIndex:index+1}}>
+    <motion.article style={{scale}} className="w-full max-w-[1000px] bg-ink2 text-bone border border-bone/15">
+      <div className="grid md:grid-cols-[1.15fr_1fr]">
+        <div className="relative overflow-hidden aspect-[16/10] md:aspect-auto md:min-h-[400px] bg-ink">
+          {img?<button onClick={()=>{SND.pop();openLightbox(img)}} data-hover aria-label={`Open ${img.title}`} className="absolute inset-0 w-full h-full">
+            <Photo src={img.thumb} alt={`${g.name} — ${img.title}`} className="absolute inset-0 w-full h-full" imgClass="duo"/>
+          </button>:<div className="absolute inset-0 animate-pulse bg-ink2"/>}
+          <motion.div style={{opacity:dim}} className="absolute inset-0 bg-ink pointer-events-none" aria-hidden="true"/>
+          <span className="absolute top-0 left-0 z-[3] bg-vermilion text-bone font-display text-xl md:text-3xl px-3 py-1 pointer-events-none tnum">{String(index+1).padStart(2,'0')}</span>
+        </div>
+        <div className="p-6 md:p-8 flex flex-col gap-4">
+          <p className="font-mono text-[10px] tracking-[.28em] text-taupe">{g.note} — {index+1}/{total}</p>
+          <h3 className="font-display uppercase leading-[.95] text-[clamp(1.6rem,3.4vw,3rem)] text-bone">{g.name}</h3>
+          <p className="text-sm md:text-base leading-relaxed text-bone/70 border-l-2 border-vermilion pl-4">{g.line}</p>
+          {img&&<Credit item={img} className="mt-auto pt-4 border-t border-bone/10"/>}
+        </div>
+      </div>
+    </motion.article>
+  </div>;
+}
+function GenreSection(){
+  const [imgs,setImgs]=useState({});
+  const ref=useRef(null);
+  const {scrollYProgress}=useScroll({target:ref,offset:['start end','end end']});
+  const hint=useTransform(scrollYProgress,[0,.06],[1,0]);
+  useEffect(()=>{let on=true;GENRES.forEach(g=>searchImages(g.q,1,'all').then(r=>{if(on&&r.items[0])setImgs(p=>{const n={};for(const k in p)n[k]=p[k];n[g.q]=r.items[0];return n})}).catch(()=>{}));return()=>{on=false}},[]);
+  return <section id="genres" className="bg-ink3 pt-28 md:pt-40">
+    <SectionHead index="02" name="GENRES" count="05 ROOMS OF PRACTICE" lines={[{t:'FIVE WAYS'},{t:'TO HOLD STILL.',cls:'text-vermilion'}]} blurb="Genre is not a box — it is a discipline of attention. Five practices, five ways of waiting for the frame."/>
+    <div ref={ref} className="relative" style={{height:(GENRES.length*100+20)+'vh'}}>
+      <div className="sticky top-0 h-0 z-[6] pointer-events-none" aria-hidden="true">
+        <motion.p style={{opacity:hint}} className="absolute top-[88svh] inset-x-0 text-center font-mono text-[11px] tracking-[.4em] text-vermilion">▼</motion.p>
+      </div>
+      {GENRES.map((g,i)=><GenreCard key={g.name} g={g} index={i} total={GENRES.length} img={imgs[g.q]}/>)}
+    </div>
+  </section>;
+}
+
+/* ================= 03 DARKROOM ================= */
+function insideRoundedMask(px,py,gw,gh,r){if(px<0||py<0||px>=gw||py>=gh)return false;for(const cx of[r,gw-1-r])for(const cy of[r,gh-1-r]){const dx=px-cx,dy=py-cy;const inX=cx===r?px<r:px>gw-1-r;const inY=cy===r?py<r:py>gh-1-r;if(inX&&inY&&dx*dx+dy*dy>r*r)return false}return true}
+function DitheredPlate({imageSrc,gridSize,scale,dotScale,invert,cornerRadius,threshold,contrast,gamma,blur,diffusionStrength,serpentine,particleColor,className='',canvasOut=null}){
+  gridSize=gridSize||360;scale=scale||0.55;dotScale=dotScale||1;invert=!!invert;cornerRadius=cornerRadius==null?0.08:cornerRadius;
+  threshold=threshold==null?128:threshold;contrast=contrast==null?0.12:contrast;gamma=gamma==null?0.95:gamma;blur=blur==null?0.8:blur;diffusionStrength=diffusionStrength==null?1:diffusionStrength;
+  serpentine=serpentine!==false;particleColor=particleColor||'#FC4C13';
+  const CR=100,CF=40,LF=.12,SNAP=.01,RS=225,RW=37,RF=20,RD=675;
+  const host=useRef(null),canvas=useRef(null),grid=useRef(null),sys=useRef(null),imgRef=useRef(null);
+  const degraded=useRef(false),fCount=useRef(0),fSum=useRef(0);
+  const P=useRef({gridSize:gridSize,invert:invert,cornerRadius:cornerRadius,threshold:threshold,contrast:contrast,gamma:gamma,blur:blur,diffusionStrength:diffusionStrength,serpentine:serpentine});
+  P.current={gridSize:gridSize,invert:invert,cornerRadius:cornerRadius,threshold:threshold,contrast:contrast,gamma:gamma,blur:blur,diffusionStrength:diffusionStrength,serpentine:serpentine};
+  const R=useRef({running:false,raf:0,vis:false,dpr:Math.min(devicePixelRatio||1,2),w:0,h:0,cur:{x:0,y:0,on:false},ripples:[],last:0}).current;
+  const setCanvasEl=useCallback(el=>{canvas.current=el;if(canvasOut)canvasOut.current=el},[canvasOut]);
+  const process=useCallback(img=>{
+    const p=P.current,gs=p.gridSize,asp=img.naturalWidth/img.naturalHeight;let gw,gh;
+    if(asp>=1){gw=gs;gh=Math.max(8,Math.round(gs/asp))}else{gh=gs;gw=Math.max(8,Math.round(gs*asp))}
+    const c=document.createElement('canvas');c.width=gw;c.height=gh;const cx=c.getContext('2d',{willReadFrequently:true});
+    cx.drawImage(img,0,0,gw,gh);const d=cx.getImageData(0,0,gw,gh).data;
+    const gray=new Float32Array(gw*gh),alpha=new Float32Array(gw*gh);
+    for(let i=0;i<gw*gh;i++){const o=i*4;gray[i]=.299*d[o]+.587*d[o+1]+.114*d[o+2];alpha[i]=d[o+3]/255}
+    const rad=Math.max(0,p.blur);
+    if(rad>.01){let src=gray,dst=new Float32Array(gw*gh);for(let pass=0;pass<2;pass++){for(let y2=0;y2<gh;y2++){let acc=0;const row=y2*gw;for(let x=-Math.floor(rad);x<=rad;x++)acc+=src[row+clampN(x,0,gw-1)];for(let x=0;x<gw;x++){dst[row+x]=acc/(2*Math.floor(rad)+1);acc+=src[row+clampN(x+Math.floor(rad)+1,0,gw-1)]-src[row+clampN(x-Math.floor(rad),0,gw-1)]}}[src,dst]=[dst,src];for(let x=0;x<gw;x++){let acc=0;for(let y2=-Math.floor(rad);y2<=rad;y2++)acc+=src[clampN(y2,0,gh-1)*gw+x];for(let y2=0;y2<gh;y2++){dst[y2*gw+x]=acc/(2*Math.floor(rad)+1);acc+=src[clampN(y2+Math.floor(rad)+1,0,gh-1)*gw+x]-src[clampN(y2-Math.floor(rad),0,gh-1)*gw+x]}}[src,dst]=[dst,src]}for(let i=0;i<gray.length;i++)gray[i]=src[i]}
+    const ct=1+p.contrast;for(let i=0;i<gw*gh;i++){let v=(gray[i]-128)*ct+128;v=255*Math.pow(clampN(v,0,255)/255,p.gamma);gray[i]=clampN(v,0,255)}
+    const buf=Float32Array.from(gray),mask=new Uint8Array(gw*gh);
+    for(let y2=0;y2<gh;y2++){const rev=p.serpentine&&y2%2===1;for(let xi=0;xi<gw;xi++){const x=rev?gw-1-xi:xi,i=y2*gw+x;const old=clampN(buf[i],0,255),nv=old>=p.threshold?255:0;mask[i]=nv;const e=(old-nv)*p.diffusionStrength,dx=rev?-1:1;
+      if(x+dx>=0&&x+dx<gw)buf[i+dx]+=e*(7/16);
+      if(y2+1<gh){if(x-dx>=0&&x-dx<gw)buf[(y2+1)*gw+x-dx]+=e*(3/16);buf[(y2+1)*gw+x]+=e*(5/16);if(x+dx>=0&&x+dx<gw)buf[(y2+1)*gw+x+dx]+=e*(1/16)}}}
+    grid.current={gw:gw,gh:gh,mask:mask,alpha:alpha,lum:gray};
+  },[]);
+  const build=useCallback(()=>{
+    const g=grid.current,h=host.current;if(!g||!h)return;const p=P.current;
+    const rect=h.getBoundingClientRect(),gw=g.gw,gh=g.gh,mask=g.mask,alpha=g.alpha;
+    const sf=Math.min(rect.width/gw,rect.height/gh),ox=(rect.width-gw*sf)/2,oy=(rect.height-gh*sf)/2;
+    const r=Math.max(1,Math.floor(p.cornerRadius*Math.min(gw,gh)));
+    const bx=[],by=[],bb=[];
+    for(let y2=0;y2<gh;y2++)for(let x=0;x<gw;x++){const i=y2*gw+x;if(alpha[i]<.08)continue;if(!insideRoundedMask(x,y2,gw,gh,r))continue;
+      const place=p.invert?mask[i]!==255:mask[i]===255;if(!place)continue;
+      bx.push(ox+(x+.5)*sf);by.push(oy+(y2+.5)*sf);bb.push(.55+.45*clampN(g.lum[i]/255,0,1))}
+    const count=bx.length,mob=matchMedia('(max-width:640px)').matches;
+    sys.current={count:count,baseX:Float32Array.from(bx),baseY:Float32Array.from(by),offsetX:new Float32Array(count),offsetY:new Float32Array(count),brightness:Float32Array.from(bb),tint:new Float32Array(count).fill(1),size:sf*scale*2*dotScale*(mob?.9:1)};
+    if(!REDUCED){const s=sys.current;for(let i=0;i<count;i++){s.offsetX[i]=(Math.random()-.5)*rect.width*.9;s.offsetY[i]=(Math.random()-.5)*rect.height*.9}}
+  },[scale,dotScale]);
+  const render=useCallback(()=>{
+    const s=sys.current,cv=canvas.current;if(!s||!cv)return;const ctx=cv.getContext('2d');
+    ctx.clearRect(0,0,R.w,R.h);ctx.fillStyle=particleColor;const half=s.size/2;
+    for(let b=10;b>=2;b--){ctx.globalAlpha=b/10;for(let i=0;i<s.count;i++){if(Math.round(s.brightness[i]*10)!==b)continue;ctx.fillRect(s.baseX[i]+s.offsetX[i]-half,s.baseY[i]+s.offsetY[i]-half,s.size,s.size)}}
+    ctx.globalAlpha=1;
+  },[particleColor]);
+  const ensure=useCallback(()=>{if(R.running||!R.vis||document.hidden)return;R.running=true;R.last=performance.now();R.raf=requestAnimationFrame(tick)},[]);
+  function tick(now){
+    const s=sys.current;if(!s||!R.vis){R.running=false;return}
+    const dt=Math.min(48,now-R.last);R.last=now;const f=dt/16.667;let energy=0;
+    fCount.current++;fSum.current+=dt;
+    if(fCount.current>=60){const avg=fSum.current/60;fCount.current=0;fSum.current=0;
+      if(avg>34&&!degraded.current&&imgRef.current&&P.current.gridSize>200){degraded.current=true;P.current.gridSize=Math.max(200,Math.round(P.current.gridSize*0.8));process(imgRef.current);build()}}
+    if(!REDUCED){
+      if(R.cur.on){const cx=R.cur.x,cy=R.cur.y,r2=CR*CR;for(let i=0;i<s.count;i++){const px=s.baseX[i]+s.offsetX[i],py=s.baseY[i]+s.offsetY[i],dx=px-cx,dy=py-cy,d2=dx*dx+dy*dy;
+        if(d2<r2&&d2>.01){const d=Math.sqrt(d2),fo=1-d/CR,push=CF*fo*fo*.09*f;s.offsetX[i]+=dx/d*push;s.offsetY[i]+=dy/d*push}}}
+      for(let k=R.ripples.length-1;k>=0;k--){const rp=R.ripples[k],age=now-rp.start;if(age>RD){R.ripples.splice(k,1);continue}
+        const life=1-age/RD,rad=age/1000*RS;
+        for(let i=0;i<s.count;i++){const dx=s.baseX[i]-rp.x,dy=s.baseY[i]-rp.y,d=Math.sqrt(dx*dx+dy*dy)||1,band=Math.abs(d-rad);
+          if(band<RW/2){const fo=(1-band/(RW/2))*life*RF*.055*f;s.offsetX[i]+=dx/d*fo;s.offsetY[i]+=dy/d*fo}}energy=1}
+      for(let i=0;i<s.count;i++){let ox=s.offsetX[i]*(1-LF*f),oy=s.offsetY[i]*(1-LF*f);if(ox*ox+oy*oy<SNAP*SNAP){ox=0;oy=0}s.offsetX[i]=ox;s.offsetY[i]=oy;energy+=Math.abs(ox)+Math.abs(oy)}}
+    render();
+    if(REDUCED||(energy/Math.max(1,s.count)<.002&&R.ripples.length===0)){R.running=false;return}
+    R.raf=requestAnimationFrame(tick);
+  }
+  useEffect(()=>{
+    const h=host.current,cv=canvas.current;if(!h||!cv)return;const ctx=cv.getContext('2d');let t=0;
+    const size=()=>{const r=h.getBoundingClientRect();R.w=r.width;R.h=r.height;cv.width=Math.round(r.width*R.dpr);cv.height=Math.round(r.height*R.dpr);ctx.setTransform(R.dpr,0,0,R.dpr,0,0)};
+    const loadInto=img=>{imgRef.current=img;process(img);size();build();render();ensure()};
+    const img=new Image();img.crossOrigin='anonymous';img.referrerPolicy='no-referrer';
+    img.onload=()=>loadInto(img);
+    img.onerror=()=>{const fb=new Image();fb.crossOrigin='anonymous';fb.onload=()=>loadInto(fb);fb.onerror=()=>{};fb.src=picseed(imageSrc,880,1100)};
+    img.src=imageSrc;
+    const ro=new ResizeObserver(()=>{size();clearTimeout(t);t=setTimeout(()=>{if(grid.current){build();render();ensure()}},260)});ro.observe(h);
+    const io=new IntersectionObserver(([e])=>{R.vis=e.isIntersecting;if(e.isIntersecting){render();ensure()}},{threshold:.05});io.observe(h);
+    const loc=e=>{const r=h.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}};
+    const mv=e=>{if(REDUCED)return;const p=loc(e);R.cur.x=p.x;R.cur.y=p.y;R.cur.on=true;ensure()};
+    const lv=()=>{R.cur.on=false};
+    const dn=e=>{if(REDUCED)return;const p=loc(e);R.ripples.push({x:p.x,y:p.y,start:performance.now()});ensure()};
+    h.addEventListener('pointermove',mv);h.addEventListener('pointerleave',lv);h.addEventListener('pointercancel',lv);h.addEventListener('pointerdown',dn);
+    return()=>{cancelAnimationFrame(R.raf);R.running=false;clearTimeout(t);ro.disconnect();io.disconnect();h.removeEventListener('pointermove',mv);h.removeEventListener('pointerleave',lv);h.removeEventListener('pointercancel',lv);h.removeEventListener('pointerdown',dn)};
+  },[imageSrc,invert,threshold,blur,contrast,gamma,serpentine,diffusionStrength,cornerRadius,gridSize,scale,dotScale]);
+  return <div ref={host} className={`relative ${className}`} role="img" aria-label="Photograph rendered as an interactive vermilion particle field"><canvas ref={setCanvasEl} className="absolute inset-0 w-full h-full touch-none cursor-crosshair"/></div>;
+}
+function DarkroomSection(){
+  const [inv,setInv]=useState(false);
+  const [src,setSrc]=useState('');
+  const [credit,setCredit]=useState(null);
+  const [custom,setCustom]=useState(null);
+  const [dragOver,setDragOver]=useState(false);
+  const [quality,setQuality]=useState(360);
+  const [mob]=useState(()=>{try{return matchMedia('(max-width:640px)').matches}catch(e){return false}});
+  const plateCanvas=useRef(null);
+  const fileRef=useRef(null);
+  const secRef=useRef(null);
+  const visibleRef=useRef(false);
+  const effQ=mob?Math.min(quality,300):quality;
+  useEffect(()=>{let on=true;corsPhoto('fog forest light').then(u=>{if(on)setSrc(u)});commons('fog forest light',1,'all').then(r=>{if(on&&r.items[0])setCredit(r.items[0])}).catch(()=>{});return()=>{on=false}},[]);
+  useEffect(()=>{
+    const el=secRef.current;if(!el)return;
+    const io=new IntersectionObserver(([e])=>{visibleRef.current=e.isIntersecting},{threshold:.15});
+    io.observe(el);return()=>io.disconnect();
+  },[]);
+  const readImageFile=useCallback(file=>{
+    if(!file||!file.type||file.type.indexOf('image')!==0)return;
+    const fr=new FileReader();
+    fr.onload=()=>{setCustom({url:String(fr.result),name:(file.name||'PASTED PLATE').toUpperCase()});SND.shutter()};
+    fr.readAsDataURL(file);
+  },[]);
+  const onUploadClick=useCallback(()=>{if(fileRef.current)fileRef.current.click()},[]);
+  const onFileChange=useCallback(e=>{
+    if(e.target.files&&e.target.files[0])readImageFile(e.target.files[0]);
+    e.target.value='';
+  },[readImageFile]);
+  const onFigDragOver=useCallback(e=>{e.preventDefault();setDragOver(true)},[]);
+  const onFigDragLeave=useCallback(()=>{setDragOver(false)},[]);
+  const onFigDrop=useCallback(e=>{
+    e.preventDefault();setDragOver(false);
+    if(e.dataTransfer&&e.dataTransfer.files&&e.dataTransfer.files[0])readImageFile(e.dataTransfer.files[0]);
+  },[readImageFile]);
+  const eject=useCallback(()=>{setCustom(null);SND.close()},[]);
+  useEffect(()=>{
+    const onPaste=e=>{
+      if(!visibleRef.current)return;
+      const t=e.target;
+      if(t&&t.closest&&t.closest('input,textarea'))return;
+      const items=e.clipboardData&&e.clipboardData.items;
+      if(!items)return;
+      for(let i=0;i<items.length;i++){
+        if(items[i].type&&items[i].type.indexOf('image')===0){
+          const f=items[i].getAsFile();
+          if(f){e.preventDefault();readImageFile(f)}
+          return;
+        }
+      }
+    };
+    document.addEventListener('paste',onPaste);
+    return()=>document.removeEventListener('paste',onPaste);
+  },[readImageFile]);
+  const download=useCallback(()=>{
+    const cv=plateCanvas.current;
+    if(!cv||!cv.width)return;
+    try{
+      const out=document.createElement('canvas');
+      out.width=cv.width;out.height=cv.height;
+      const c=out.getContext('2d');
+      c.fillStyle='#100E0C';c.fillRect(0,0,out.width,out.height);
+      c.drawImage(cv,0,0);
+      const a=document.createElement('a');
+      a.download='visual-archive-dither-'+Date.now()+'.png';
+      a.href=out.toDataURL('image/png');
+      document.body.appendChild(a);a.click();document.body.removeChild(a);
+      SND.thunk();
+    }catch(e){}
+  },[]);
+  const plateProps={gridSize:effQ,scale:0.55,dotScale:1,blur:0.8,threshold:128,contrast:0.12,gamma:0.95,cornerRadius:0.08,invert:inv,canvasOut:plateCanvas};
+  const invertBtns=<div className="flex border border-bone/25 w-max" role="group" aria-label="Render mode">
+    {[false,true].map(v=><button key={String(v)} onClick={()=>{setInv(v);SND.click()}} aria-pressed={inv===v} data-hover className={`font-mono text-[10px] tracking-[.25em] px-4 py-3 min-h-[44px] transition-colors ${inv===v?'bg-vermilion text-bone':'text-taupe hover:text-bone'}`}>{v?'INVERTED':'POSITIVE'}</button>)}
+  </div>;
+  const grainBtns=<div className="flex border border-bone/25 w-max" role="group" aria-label="Grain detail">
+    {[[240,'STANDARD'],[360,'FINE'],[480,'ULTRA']].map(([v,l])=>
+      <button key={v} onClick={()=>{setQuality(v);SND.click()}} aria-pressed={quality===v} data-hover className={`font-mono text-[10px] tracking-[.25em] px-4 py-3 min-h-[44px] transition-colors ${quality===v?'bg-bone text-ink':'text-taupe hover:text-bone'}`}>{l}</button>)}
+  </div>;
+  return <section id="darkroom" ref={secRef} className="bg-ink pt-28 md:pt-40">
+    <SectionHead index="03" name="DARKROOM" count={custom?('YOUR PLATE — '+effQ+'² GRAIN'):(effQ+'² GRAIN — HI-DETAIL')} lines={[{t:'DEVELOP'},{t:'IN FRONT OF YOU.',cls:'text-vermilion'}]} blurb="High-detail serpentine dither: fine grain reads faces, hands, headlines. Feed the box your own image — paste, drop or upload — source left, vermilion grain right, PNG download ready."/>
+    <div className="pp max-w-[1400px] mx-auto grid md:grid-cols-12 gap-10 pt-6 pb-28">
+      <div className="md:col-span-4 space-y-6">
+        <p className="reveal text-sm leading-relaxed text-taupe">Detail comes from three dials: a tight grid (up to 480²), almost no pre-blur, and a mid-tone threshold so shadows and highlights both keep their grains. The renderer still sleeps when idle and downsamples once on slow devices.</p>
+        <div className="reveal space-y-3">
+          <p className="font-mono text-[10px] tracking-[.28em] text-taupe">GRAIN DETAIL</p>
+          {grainBtns}
+          <p className="font-mono text-[9px] tracking-[.2em] text-taupe/80 tnum">{effQ}×{Math.round(effQ*0.8)} CELLS · ULTRA CAPS TO 300² ON MOBILE</p>
+        </div>
+        <div className="reveal space-y-3">
+          <p className="font-mono text-[10px] tracking-[.28em] text-taupe">DEVELOP MODE</p>
+          {invertBtns}
+        </div>
+        <div className="reveal space-y-2">
+          <p className="font-mono text-[10px] tracking-[.28em] text-taupe">HOW TO FEED THE TRAY</p>
+          <ol className="space-y-1 font-mono text-[10px] tracking-[.18em] text-bone/70 leading-relaxed">
+            <li>01 — PRESS “YOUR IMAGE ↥” ON THE BOX</li>
+            <li>02 — OR DROP A FILE ONTO THE BOX</li>
+            <li>03 — OR CTRL+V ANYWHERE IN THIS ROOM</li>
+            <li>04 — TAKE THE PRINT WITH “PNG ↓”</li>
+          </ol>
+        </div>
+        {credit&&!custom&&<Credit item={credit} className="reveal"/>}
+      </div>
+      <div className="md:col-span-8">
+        <figure onDragOver={onFigDragOver} onDragLeave={onFigDragLeave} onDrop={onFigDrop}
+          className={`relative border bg-ink2 p-3 md:p-4 transition-colors ${dragOver?'border-vermilion':'border-bone/15'}`}>
+          <div className="flex flex-wrap items-center justify-between gap-3 pb-3">
+            <p className="font-mono text-[10px] tracking-[.25em] text-taupe tnum">FIG. 03 — {custom?'YOUR PLATE ON THE TRAY':'SAFELIGHT ON'}</p>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={onUploadClick} data-hover className="font-mono text-[10px] tracking-[.22em] px-3 py-2 min-h-[36px] bg-vermilion text-bone hover:bg-ember transition-colors">YOUR IMAGE ↥</button>
+              <span className="font-mono text-[9px] tracking-[.2em] text-taupe hidden sm:inline">OR CTRL+V / DROP HERE</span>
+              {custom&&<button onClick={eject} data-hover className="font-mono text-[10px] tracking-[.22em] px-3 py-2 min-h-[36px] border border-bone/30 text-bone hover:bg-bone hover:text-ink transition-colors">EJECT ✕</button>}
+              <button onClick={download} data-hover className="font-mono text-[10px] tracking-[.22em] px-3 py-2 min-h-[36px] border border-bone/30 text-bone hover:bg-bone hover:text-ink transition-colors">PNG ↓</button>
+            </div>
+          </div>
+          {custom?(
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div className="relative border border-bone/15 bg-ink">
+                <img src={custom.url} alt="Your source image" className="w-full aspect-[4/5] object-contain"/>
+                <span className="absolute top-0 left-0 bg-cod text-bone font-mono text-[9px] tracking-[.2em] px-2 py-1">SOURCE</span>
+              </div>
+              <div className="relative border border-bone/15 bg-ink">
+                <DitheredPlate imageSrc={custom.url} className="w-full aspect-[4/5]" gridSize={plateProps.gridSize} scale={plateProps.scale} dotScale={plateProps.dotScale} blur={plateProps.blur} threshold={plateProps.threshold} contrast={plateProps.contrast} gamma={plateProps.gamma} cornerRadius={plateProps.cornerRadius} invert={plateProps.invert} canvasOut={plateProps.canvasOut}/>
+                <span className="absolute top-0 left-0 bg-vermilion text-bone font-mono text-[9px] tracking-[.2em] px-2 py-1">DEVELOPED</span>
+              </div>
+            </div>
+          ):(
+            <div className="relative border border-bone/15 bg-ink">
+              {src?<DitheredPlate imageSrc={src} className="w-full aspect-[4/5] sm:aspect-square" gridSize={plateProps.gridSize} scale={plateProps.scale} dotScale={plateProps.dotScale} blur={plateProps.blur} threshold={plateProps.threshold} contrast={plateProps.contrast} gamma={plateProps.gamma} cornerRadius={plateProps.cornerRadius} invert={plateProps.invert} canvasOut={plateProps.canvasOut}/>:<div className="w-full aspect-[4/5] sm:aspect-square animate-pulse bg-ink2"/>}
+              <button onClick={onUploadClick} data-hover
+                className="absolute bottom-3 left-1/2 -translate-x-1/2 whitespace-nowrap font-mono text-[9px] tracking-[.25em] text-bone/90 bg-ink/85 border border-bone/25 px-4 py-2.5 min-h-[36px] hover:border-vermilion hover:text-vermilion transition-colors">
+                DROP / PASTE / UPLOAD YOUR IMAGE HERE
+              </button>
+            </div>
+          )}
+          {dragOver&&<div className="absolute inset-0 z-[4] flex items-center justify-center bg-ink/85 border-2 border-dashed border-vermilion pointer-events-none">
+            <p className="font-display uppercase text-3xl text-vermilion">DROP TO DEVELOP</p>
+          </div>}
+          <figcaption className="flex flex-wrap justify-between gap-2 pt-3 font-mono text-[10px] tracking-[.25em] text-taupe">
+            <span className="truncate max-w-[60%]">{custom?custom.name:'ARCHIVE NEGATIVE — CC LICENSED'}</span>
+            <span>TOUCH TO DISTURB</span>
+          </figcaption>
+        </figure>
+        <input ref={fileRef} type="file" accept="image/*" className="hidden" tabIndex={-1} aria-hidden="true" onChange={onFileChange}/>
+      </div>
+    </div>
+  </section>;
+}
+
+/* ================= 04 CONTACT SHEET ================= */
+function SheetSection({shot}){
+  const items=(shot.items||[]).slice(0,14);
+  return <section id="sheet" className="bg-ink3 pt-28 md:pt-40 pb-28">
+    <SectionHead index="04" name="CONTACT SHEET" count={`ROLL: “${shot.q}” — ${items.length} FRAMES`} lines={[{t:'THE ROLL,'},{t:'LAID FLAT.',cls:'text-vermilion'}]} blurb="Your last search, printed as a contact sheet — the way an editor scans a roll before choosing. Frames mirror room 01 live."/>
+    <div className="pp">
+      <div className="border-y-2 border-bone/20 py-4">
+        <div className="sheet flex gap-4 overflow-x-auto pb-3 snap-x snap-mandatory" role="list" aria-label={`Contact sheet for ${shot.q}`}>
+          {items.length===0&&<p className="font-mono text-[11px] tracking-[.25em] text-taupe py-10">SEARCH IN ROOM 01 TO EXPOSE THIS ROLL.</p>}
+          {items.map((it,i)=>(
+            <button key={it.id+i} role="listitem" onClick={()=>{SND.pop();openLightbox(it)}} data-hover aria-label={`Frame ${i+1}: ${it.title}`} className="group shrink-0 w-[180px] md:w-[230px] snap-start text-left">
+              <div className="flex items-center justify-between font-mono text-[9px] tracking-[.2em] text-taupe pb-1 tnum">
+                <span>{String(i+1).padStart(2,'0')}A</span><span>{it.license}</span>
+              </div>
+              <Photo src={it.thumb} alt={it.title} className="aspect-[3/2] border border-bone/15 group-hover:border-vermilion transition-colors" imgClass="duo"/>
+              <p className="font-mono text-[9px] tracking-[.18em] text-taupe pt-1 truncate">© {it.creator}</p>
+            </button>))}
+          <div className="w-[80px] shrink-0 flex items-center justify-center font-display text-vermilion text-2xl" aria-hidden="true">✳</div>
+        </div>
+      </div>
+      <p className="font-mono text-[10px] tracking-[.25em] text-taupe pt-4">EDGE MARKINGS: FRAME № · LICENSE — SCROLL SIDEWAYS ON TOUCH.</p>
+    </div>
+  </section>;
+}
+
+/* ================= 05 CORRESPONDENCE ================= */
+const NOTE_ENDPOINT='';
+function NoteSection(){
+  const [msg,setMsg]=useState(''),[phase,setPhase]=useState('idle'),[filed,setFiled]=useState(0);
+  const [ptype,setPtype]=useState('letter');
+  const [slips,setSlips]=useState(()=>{try{return JSON.parse(store.get('va-notes')||'[]')}catch(e){return[]}});
+  const stage=useRef(null),paper=useRef(null),zone=useRef(null);
+  const controls=useAnimationControls();
+  const fileNote=m=>{
+    const next=[{t:Date.now(),m:m,ptype:ptype}].concat(slips).slice(0,3);
+    setSlips(next);store.set('va-notes',JSON.stringify(next));
+    setFiled(f=>f+1);
+    if(NOTE_ENDPOINT){fetch(NOTE_ENDPOINT,{method:'POST',headers:{'Content-Type':'application/json',Accept:'application/json'},body:JSON.stringify({message:m,paper:ptype})}).catch(()=>{})}
+  };
+  const send=useCallback(async()=>{
+    if(phase!=='idle'||!msg.trim())return;
+    setPhase('flying');SND.crumple();
+    const pr=paper.current?paper.current.getBoundingClientRect():null;
+    const zr=zone.current?zone.current.getBoundingClientRect():null;
+    let dx=0,dy=0;
+    if(pr&&zr){dx=(zr.left+zr.width/2)-(pr.left+pr.width/2);dy=(zr.top+zr.height/2)-(pr.top+pr.height/2)}
+    const spin=ptype==='postcard'?-200:ptype==='telegram'?380:240;
+    try{
+      await controls.start({x:dx,y:dy,rotate:10,scale:.92,transition:{duration:.5,ease:'easeInOut'}});
+      await controls.start({scale:[.92,.6,.32],rotate:[10,spin*.5,spin],opacity:[1,1,0],borderRadius:['0%','18%','46% 54% 50% 50%/52% 48% 55% 45%'],transition:{duration:.65,ease:'easeIn'}});
+      SND.thunk();fileNote(msg.trim());setPhase('sent');
+    }catch(e){SND.thunk();fileNote(msg.trim());setPhase('sent')}
+  },[phase,msg,controls,ptype,slips]);
+  const onDragEnd=()=>{
+    const pr=paper.current?paper.current.getBoundingClientRect():null;
+    const zr=zone.current?zone.current.getBoundingClientRect():null;
+    if(pr&&zr){const cx=pr.left+pr.width/2,cy=pr.top+pr.height/2;
+      if(cx>zr.left-20&&cx<zr.right+20&&cy>zr.top-20&&cy<zr.bottom+20){send();return}}
+  };
+  const reset=()=>{setPhase('idle');setMsg('');controls.set({x:0,y:0,scale:1,rotate:-2,opacity:1,borderRadius:'0%'})};
+  return <section id="note" className="bg-ink pt-28 md:pt-40 pb-32">
+    <SectionHead index="05" name="CORRESPONDENCE" count={`FILED: ${String(filed+slips.length).padStart(3,'0')}`} lines={[{t:'TELL US WHAT'},{t:'YOU SAW.',cls:'text-vermilion'}]} blurb="Found a frame that stopped you? Write it down, crumple it, throw it into the slot. We read everything twice."/>
+    <div className="pp max-w-[1400px] mx-auto grid md:grid-cols-2 gap-10 md:gap-16 pt-6">
+      <div className="space-y-5">
+        <textarea id="note-input" value={msg} maxLength={240} onChange={e=>setMsg(e.target.value)} placeholder="Dear archive — there is a photograph of…" aria-label="Your message" data-hover className="w-full bg-ink2 border border-bone/20 focus:border-vermilion outline-none p-5 font-mono text-sm text-bone placeholder-taupe/60 resize-none min-h-[170px] transition-colors"/>
+        <div className="flex flex-wrap items-center gap-3" role="group" aria-label="Paper type">
+          {['letter','postcard','telegram'].map(p=><button key={p} onClick={()=>{setPtype(p);SND.click()}} aria-pressed={ptype===p} data-hover className={`font-mono text-[10px] tracking-[.25em] px-4 py-3 min-h-[44px] border transition-colors ${ptype===p?'border-vermilion bg-vermilion text-bone':'border-bone/25 text-taupe hover:text-bone'}`}>{p.toUpperCase()}</button>)}
+        </div>
+        <div className="flex flex-wrap items-center gap-4">
+          <Mag strength={8}><button onClick={send} disabled={!msg.trim()||phase!=='idle'} data-hover className="bg-vermilion text-bone font-display uppercase text-lg px-7 py-4 min-h-[44px] border-2 border-ink shadow-[6px_6px_0_0_#F4F1EA] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[4px_4px_0_0_#F4F1EA] transition-all disabled:opacity-40 disabled:pointer-events-none">Crumple & Send ↗</button></Mag>
+          <span className="font-mono text-[10px] tracking-[.25em] text-taupe">OR DRAG THE PAPER INTO THE SLOT</span>
+        </div>
+        {slips.length>0&&<div className="flex flex-col items-start gap-3 pt-2">
+          <p className="font-mono text-[10px] tracking-[.28em] text-taupe">RECENT FILINGS — FULL TEXT</p>
+          {slips.map((s,i)=>(
+            <span key={s.t} className="bg-paper text-cod font-mono text-[10px] leading-relaxed tracking-[.12em] px-3 py-2.5 w-full max-w-[340px] whitespace-pre-wrap break-words border border-cod"
+              style={{transform:`rotate(${[-1.2,0.8,-0.6][i%3]}deg)`,boxShadow:'3px 3px 0 0 #FC4C13'}}>{s.m}</span>
+          ))}
+        </div>}
+        <AnimatePresence>{phase==='sent'&&<motion.div initial={{opacity:0,y:16}} animate={{opacity:1,y:0}} className="border border-vermilion bg-ink2 p-5 flex flex-wrap items-center gap-4 justify-between">
+          <p className="font-display uppercase text-vermilion text-2xl">Received — filed under ∞</p>
+          <button onClick={reset} data-hover className="font-mono text-[11px] tracking-[.25em] text-bone border border-bone/30 px-4 py-3 min-h-[44px] hover:bg-bone hover:text-ink transition-colors">WRITE ANOTHER</button>
+        </motion.div>}</AnimatePresence>
+      </div>
+      <div ref={stage} className="relative border border-dashed border-bone/25 min-h-[420px] md:min-h-[500px] overflow-hidden bg-ink2/50">
+        {phase!=='sent'&&<motion.div ref={paper} drag={phase==='idle'} dragConstraints={stage} dragElastic={.12} onDragEnd={onDragEnd} animate={controls} initial={{rotate:-2}} style={{touchAction:'none'}} data-hover className="absolute left-1/2 top-10 -ml-[130px] w-[260px] bg-paper text-cod border border-cod p-5">
+          <span aria-hidden="true" className="absolute -top-3 left-1/2 -translate-x-1/2 w-20 h-6 bg-vermilion/70 rotate-[-4deg]"/>
+          <p className="font-mono text-[9px] tracking-[.25em] text-cod/50 border-b border-cod/15 pb-2 mb-3">THE VISUAL ARCHIVE — {ptype.toUpperCase()}</p>
+          {ptype==='postcard'?<div className="grid grid-cols-[1fr_70px] gap-3">
+            <p className="ink-text font-mono text-[11px] leading-relaxed whitespace-pre-wrap min-h-[110px] text-cod/90">{msg||'Dear archive — there is a photograph of…'}</p>
+            <div className="flex flex-col gap-2"><span className="w-12 h-14 border-2 border-vermilion flex items-center justify-center text-vermilion">✳</span><span className="h-px bg-cod/40"/><span className="h-px bg-cod/40"/></div>
+          </div>:
+          <p className={`ink-text font-mono leading-relaxed whitespace-pre-wrap min-h-[110px] text-cod/90 ${ptype==='telegram'?'text-[10px] tracking-[.18em] uppercase border-4 [border-style:double] border-cod/60 p-2':'text-[12px]'}`}>{ptype==='telegram'?(msg||'DEAR ARCHIVE …').toUpperCase():(msg||'Dear archive — there is a photograph of…')}</p>}
+          <p className="font-mono text-[9px] tracking-[.2em] text-cod/50 mt-3 text-right">— A FRIEND</p>
+        </motion.div>}
+        <div ref={zone} className="absolute bottom-6 left-1/2 -translate-x-1/2 w-32 h-32 rounded-full border-2 border-vermilion border-dashed flex flex-col items-center justify-center gap-1 text-center bg-ink/60">
+          <span className="font-display uppercase text-vermilion text-base leading-none">Throw</span>
+          <span className="font-display uppercase text-vermilion text-base leading-none">it here</span>
+        </div>
+      </div>
+    </div>
+  </section>;
+}
+
+/* ================= FOOTER + DEVELOPER ================= */
+function DevPortrait(){
+  const [st,setSt]=useState('load');
+  const src=DEV_IMG_DATA||DEV_IMG;
+  return <div className="relative w-40 md:w-56 aspect-[4/5] border border-bone/20 bg-ink2 overflow-hidden shrink-0 shadow-[6px_6px_0_0_rgba(252,76,19,.55)]">
+    {st==='err'?(
+      <div className="absolute inset-0 flex flex-col items-center justify-center gap-3" style={{backgroundImage:'radial-gradient(rgba(252,76,19,.45) 1px, transparent 1.6px)',backgroundSize:'6px 6px'}}>
+        <span className="font-display text-5xl text-vermilion">CT</span>
+        <span className="font-mono text-[8px] tracking-[.22em] text-taupe text-center px-3">PORTRAIT NOT FOUND — SAVE YOUR PHOTO AS dev.png NEXT TO THIS FILE</span>
+      </div>
+    ):(
+      <img src={src} alt="Chauhan Tejash — full stack developer portrait" onLoad={()=>setSt('ok')} onError={()=>setSt('err')}
+        className={`h-full w-full object-cover transition-opacity duration-700 ${st==='ok'?'opacity-100':'opacity-0'}`}/>
+    )}
+    <span className="absolute top-0 left-0 bg-vermilion text-bone font-mono text-[9px] tracking-[.2em] px-2 py-1">DEV</span>
+  </div>;
+}
+function Footer(){
+  return <footer id="statement" className="bg-ink3 text-bone">
+    <Marquee speed={22} reverse className="bg-vermilion" trackClass="py-2.5">
+      {['CREDIT THE HAND','KEEP THE LIGHT','NOTHING IS NEUTRAL'].map(w=><span key={w} className="flex items-center"><span className="font-display uppercase text-ink text-lg md:text-2xl px-5">{w}</span><span className="text-bone">✳</span></span>)}
+    </Marquee>
+    <div className="pp max-w-[1400px] mx-auto pt-20 md:pt-28 pb-10">
+      <div className="flex items-end gap-5 mb-8">
+        <VAMark className="h-12 w-12"/>
+        <p className="font-mono text-[10px] tracking-[.3em] text-taupe pb-1">THE VISUAL ARCHIVE — SQUARE MARK, CUT BY THE SWOOSH</p>
+      </div>
+      <h2 className="font-display uppercase leading-[.92] text-[clamp(2.8rem,11vw,9.5rem)] text-bone">
+        <CharLines lines={[{t:'EVERY FRAME'},{t:'OWES A NAME.',cls:'text-ember'}]}/>
+      </h2>
+      <div className="grid md:grid-cols-12 gap-10 mt-16 border-t border-bone/20 pt-8">
+        <div className="md:col-span-4">
+          <p className="font-mono text-[11px] tracking-[.28em] mb-4 text-taupe">ROOMS</p>
+          <ul className="space-y-2">{SECTIONS.map(s=><li key={s.id}><button onClick={()=>{SND.click();curtainTo('#'+s.id)}} data-hover className="ulink font-display uppercase text-xl md:text-2xl hover:text-vermilion transition-colors">{s.name}</button></li>)}</ul>
+        </div>
+        <div className="md:col-span-4">
+          <p className="font-mono text-[11px] tracking-[.28em] mb-4 text-taupe">SOURCES</p>
+          <ul className="space-y-2 font-mono text-[12px] tracking-[.2em]">
+            <li><a className="ulink hover:text-vermilion" href="https://commons.wikimedia.org" target="_blank" rel="noopener noreferrer">WIKIMEDIA COMMONS ↗</a></li>
+            <li><a className="ulink hover:text-vermilion" href="https://openverse.org" target="_blank" rel="noopener noreferrer">OPENVERSE ↗</a></li>
+            <li><a className="ulink hover:text-vermilion" href="https://creativecommons.org" target="_blank" rel="noopener noreferrer">CREATIVE COMMONS ↗</a></li>
+          </ul>
+        </div>
+        <div className="md:col-span-4">
+          <p className="font-mono text-[11px] tracking-[.28em] mb-4 text-taupe">COLOPHON</p>
+          <p className="font-mono text-[11px] leading-relaxed tracking-[.12em] text-bone/70">ANTON · SPACE GROTESK · SPACE MONO<br/>WARM BLACK #100E0C — ED. 02 MMXXVI<br/>✓ 0 TRACKERS ✓ 0 COOKIES ✓ ALL PLATES CREDITED</p>
+          <Mag strength={8}><button onClick={()=>{SND.click();curtainTo(0)}} data-hover className="mt-6 bg-bone text-ink font-display uppercase text-base px-6 py-4 min-h-[44px] shadow-[5px_5px_0_0_#FC4C13] hover:translate-x-[2px] hover:translate-y-[2px] hover:shadow-[3px_3px_0_0_#FC4C13] transition-all">Back to top ↑</button></Mag>
+        </div>
+      </div>
+      <div className="mt-14 pt-10 border-t border-bone/20 grid md:grid-cols-12 gap-8 items-center">
+        <div className="md:col-span-3 flex md:block justify-center">
+          <DevPortrait/>
+        </div>
+        <div className="md:col-span-9">
+          <p className="font-mono text-[10px] tracking-[.3em] text-taupe">DEVELOPED & DESIGNED BY</p>
+          <p className="font-display uppercase text-[clamp(1.8rem,5vw,3.4rem)] text-bone leading-none mt-2">{DEV.name}</p>
+          <p className="font-mono text-[10px] tracking-[.25em] text-vermilion mt-3">{DEV.role}</p>
+          <p className="text-sm text-bone/70 mt-3 max-w-[56ch] leading-relaxed">{DEV.bio}</p>
+          <ul className="flex flex-wrap gap-x-8 gap-y-2 mt-5 font-mono text-[11px] tracking-[.2em]">
+            <li><a className="ulink hover:text-vermilion" href={DEV.portfolio} target="_blank" rel="noopener noreferrer">PORTFOLIO — tejash-portfolio18.vercel.app ↗</a></li>
+            <li><a className="ulink hover:text-vermilion" href={'mailto:'+DEV.email}>{DEV.email}</a></li>
+            <li><a className="ulink hover:text-vermilion" href={DEV.linkedin} target="_blank" rel="noopener noreferrer">LINKEDIN ↗</a></li>
+            <li><a className="ulink hover:text-vermilion" href={DEV.insta} target="_blank" rel="noopener noreferrer">{DEV.handle} ↗</a></li>
+          </ul>
+        </div>
+      </div>
+      <div className="mt-12 pt-5 border-t border-bone/20 flex flex-wrap gap-x-8 gap-y-2 font-mono text-[10px] tracking-[.25em] text-taupe tnum">
+        <span>THE VISUAL ARCHIVE</span><span>BUILT BY CHAUHAN TEJASH — FULL STACK DEV</span><span>© 2026</span>
+        <span className="ml-auto"><Clock/></span>
+      </div>
+    </div>
+  </footer>;
+}
+
+/* ================= ERROR BOUNDARY ================= */
+class Boundary extends React.Component{
+  constructor(p){super(p);this.state={err:null}}
+  static getDerivedStateFromError(e){return{err:e}}
+  componentDidCatch(e){try{window.__VA_ERRORS.push('boundary: '+((e&&e.message)||e))}catch(_){}}
+  render(){
+    if(this.state.err)return <div className="pp py-40 font-mono text-sm text-vermilion" style={{whiteSpace:'pre-wrap'}}>RENDER ERROR — {String((this.state.err&&this.state.err.message)||this.state.err)}</div>;
+    return this.props.children;
+  }
+}
+
+/* ================= APP — site + in-file login view ================= */
+function App(){
+  const [loaded,setLoaded]=useState(REDUCED);
+  const [current,setCurrent]=useState({n:'00',name:'ENTRANCE'});
+  const [pct,setPct]=useState(0);
+  const [shot,setShot]=useState({q:'LIGHT',items:[]});
+  const [view,setView]=useState(()=>{try{return location.hash==='#login'?'login':'site'}catch(e){return 'site'}});
+  const [session,setSession]=useState(null);
+  useEffect(()=>{
+    const onHash=()=>{setView(location.hash==='#login'?'login':'site')};
+    addEventListener('hashchange',onHash);
+    return()=>removeEventListener('hashchange',onHash);
+  },[]);
+  useEffect(()=>{
+    if(!supabaseClient)return;
+    let active=true;
+    supabaseClient.auth.getSession().then(({data})=>{if(active)setSession(data.session)}).catch(()=>{});
+    const {data:{subscription}}=supabaseClient.auth.onAuthStateChange((_event,nextSession)=>{if(active)setSession(nextSession)});
+    return()=>{active=false;subscription.unsubscribe()};
+  },[]);
+  useEffect(()=>{if(REDUCED||!window.Lenis)return;try{const lenis=new window.Lenis({duration:1.15,easing:t=>1-Math.pow(1-t,4)});lenisInstance=lenis;let raf;const loop=t=>{lenis.raf(t);raf=requestAnimationFrame(loop)};raf=requestAnimationFrame(loop);return()=>{cancelAnimationFrame(raf);lenis.destroy();lenisInstance=null}}catch(e){}},[]);
+  useEffect(()=>{
+    if(REDUCED)return;let last=scrollY,vel=0,raf=null,active=false;
+    const loop=()=>{const y=scrollY;vel=lerp(vel,y-last,.25);last=y;
+      document.documentElement.style.setProperty('--va-skew',clampN(vel*0.05,-3.5,3.5)+'deg');
+      if(Math.abs(vel)>.05){raf=requestAnimationFrame(loop)}else{document.documentElement.style.setProperty('--va-skew','0deg');active=false;raf=null}};
+    const on=()=>{if(!active){active=true;raf=requestAnimationFrame(loop)}};
+    addEventListener('scroll',on,{passive:true});return()=>{removeEventListener('scroll',on);cancelAnimationFrame(raf)};
+  },[]);
+  useEffect(()=>{
+    const io=new IntersectionObserver(es=>{for(const e of es){if(!e.isIntersecting)continue;const id=e.target.id;
+      if(id==='top')setCurrent({n:'00',name:'ENTRANCE'});else if(id==='statement')setCurrent({n:'06',name:'FIN'});
+      else{const s=SECTIONS.find(x=>x.id===id);if(s)setCurrent({n:s.n,name:s.name})}}},{rootMargin:'-40% 0px -50% 0px'});
+    ['top',...SECTIONS.map(s=>s.id),'statement'].forEach(id=>{const el=document.getElementById(id);if(el)io.observe(el)});
+    const pf=()=>setPct(Math.round(scrollY/Math.max(1,document.body.scrollHeight-innerHeight)*100));
+    pf();addEventListener('scroll',pf,{passive:true});
+    return()=>{io.disconnect();removeEventListener('scroll',pf)};
+  },[]);
+  const random=useCallback(()=>{
+    const pool=shot.items&&shot.items.length?shot.items:null;
+    if(pool){openLightbox(pool[Math.floor(Math.random()*pool.length)]);return}
+    searchImages('surprise',1,'all').then(r=>{if(r.items[0])openLightbox(r.items[Math.floor(Math.random()*r.items.length)])}).catch(()=>{});
+  },[shot]);
+  useEffect(()=>{
+    let gAt=0;
+    const on=e=>{
+      if(e.target.closest('input,textarea'))return;
+      const k=e.key.toLowerCase();
+      if(k==='/'){e.preventDefault();curtainTo('#search');setTimeout(()=>{const el=document.getElementById('q');if(el)el.focus({preventScroll:true})},600);return}
+      if(k==='m'){SND.toggle();return}
+      if(k==='r'){SND.shutter();random();return}
+      if(k==='g'){gAt=Date.now();return}
+      if(Date.now()-gAt<900){const map={s:'#search',g:'#genres',d:'#darkroom',c:'#sheet',n:'#note'};if(map[k]){SND.click();curtainTo(map[k]);gAt=0;return}}
+      if(['1','2','3','4','5'].includes(k)){SND.click();curtainTo('#'+SECTIONS[+k-1].id)}
+      if(k==='0')curtainTo(0);
+    };
+    addEventListener('keydown',on);return()=>removeEventListener('keydown',on);
+  },[random]);
+  const goLogin=useCallback(()=>{SND.open();try{location.hash='#login'}catch(e){setView('login')}},[]);
+  const exitLogin=useCallback(()=>{
+    try{history.replaceState(null,'',location.pathname+location.search)}catch(e){try{location.hash=''}catch(e2){}}
+    setView('site');
+    window.scrollTo({top:0,behavior:'auto'});
+  },[]);
+  const handleGranted=useCallback(sess=>{
+    setSession(sess);
+    if(curtainSweep)curtainSweep();
+    setTimeout(()=>{exitLogin()},560);
+  },[exitLogin]);
+  const signOut=useCallback(()=>{
+    if(supabaseClient)supabaseClient.auth.signOut().catch(()=>{});
+    setSession(null);
+    SND.close();
+    if(curtainSweep)curtainSweep();
+  },[]);
+  return <div className="bg-ink text-bone min-h-screen font-body">
+    <Grain/><Cursor/><Curtain/>
+    {view==='login'?(
+      <LoginView onGranted={handleGranted} onExit={exitLogin}/>
+    ):(<>
+      <Lightbox/><Dots current={current} pct={pct}/><BackTop/>
+      <AnimatePresence>{!loaded&&<Preloader onDone={()=>setLoaded(true)}/>}</AnimatePresence>
+      <Nav current={current} onRandom={random} session={session} onSignIn={goLogin} onSignOut={signOut}/>
+      <main id="main">
+        <Hero/>
+        <SearchSection onResults={setShot}/>
+        <Bridge a="#100E0C" b="#211D19"/>
+        <GenreSection/>
+        <Bridge a="#211D19" b="#100E0C"/>
+        <DarkroomSection/>
+        <Bridge a="#100E0C" b="#211D19"/>
+        <SheetSection shot={shot}/>
+        <Bridge a="#211D19" b="#100E0C"/>
+        <NoteSection/>
+        <Bridge a="#100E0C" b="#211D19"/>
+      </main>
+      <Footer/>
+    </>)}
+  </div>;
+}
+function boot(){
+  const root=document.getElementById('root');
+  try{
+    ReactDOM.createRoot(root).render(<Boundary><App/></Boundary>);
+  }catch(err){
+    try{window.__VA_ERRORS.push('boot: '+((err&&err.message)||err))}catch(_){}
+    root.innerHTML='<div style="padding:48px;font-family:monospace;color:#FC4C13;white-space:pre-wrap">BOOT ERROR — '+String((err&&err.message)||err)+'</div>';
+  }
+}
+if(document.readyState==='loading')document.addEventListener('DOMContentLoaded',boot);else boot();
