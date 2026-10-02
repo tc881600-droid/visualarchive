@@ -1,0 +1,51 @@
+:root{--ink:#100E0C;--vermilion:#FC4C13;--bone:#F4F1EA;--pad:clamp(16px,4vw,64px);--nav-h:64px;--e-out:cubic-bezier(.16,1,.3,1);--va-skew:0deg}
+html,body{background:var(--ink);color:var(--bone);overflow-x:clip}
+html{scrollbar-color:#FC4C13 #100E0C}
+::-webkit-scrollbar{width:10px}::-webkit-scrollbar-track{background:#100E0C}::-webkit-scrollbar-thumb{background:#211D19;border:2px solid #100E0C;border-radius:8px}::-webkit-scrollbar-thumb:hover{background:#FC4C13}
+html.lenis,html.lenis body{height:auto}.lenis.lenis-smooth{scroll-behavior:auto!important}.lenis.lenis-stopped{overflow:hidden}
+body{font-family:'Space Grotesk',sans-serif;-webkit-font-smoothing:antialiased}
+section{scroll-margin-top:calc(var(--nav-h) + 16px)}
+::selection{background:var(--vermilion);color:var(--bone)}
+:focus-visible{outline:2px solid var(--vermilion);outline-offset:3px}
+.pp{padding-left:var(--pad);padding-right:var(--pad)}
+.tnum{font-variant-numeric:tabular-nums}
+.skewable{transform:skewY(var(--va-skew))}
+.skip{position:fixed;top:0;left:0;z-index:130;transform:translateY(-120%);transition:transform .3s}
+.skip:focus-visible{transform:translateY(0)}
+.glass{background:rgba(25,22,19,.42);-webkit-backdrop-filter:blur(28px) saturate(160%);backdrop-filter:blur(28px) saturate(160%)}
+@supports not ((backdrop-filter:blur(1px)) or (-webkit-backdrop-filter:blur(1px))){.glass{background:rgba(25,22,19,.94)}}
+.glass-sheen{background:linear-gradient(to bottom, rgba(244,241,234,.17), rgba(244,241,234,.05) 38%, rgba(16,14,12,0) 55%, rgba(16,14,12,.30))}
+.water-light{background:radial-gradient(140px 46px at var(--mx,50%) 8%, rgba(244,241,234,.30), rgba(244,241,234,.06) 45%, transparent 72%)}
+.marquee{mask-image:linear-gradient(90deg,transparent,black 5%,black 95%,transparent);-webkit-mask-image:linear-gradient(90deg,transparent,black 5%,black 95%,transparent)}
+.ulink{position:relative}
+.ulink::after{content:'';position:absolute;left:0;bottom:-2px;height:1px;width:100%;background:currentColor;transform:scaleX(0);transform-origin:left;transition:transform .4s var(--e-out)}
+.ulink:hover::after,.ulink:focus-visible::after{transform:scaleX(1)}
+.duo{filter:grayscale(1) sepia(.16) contrast(1.06) brightness(.94);transition:filter .7s var(--e-out)}
+.group:hover .duo,.duo:hover{filter:grayscale(0) sepia(0) contrast(1) brightness(1)}
+.grain{position:fixed;inset:-60px;z-index:95;pointer-events:none;opacity:.05;mix-blend-mode:overlay;animation:grain 1.4s steps(6) infinite;
+ background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='280' height='280'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='0.7'/%3E%3C/svg%3E");
+ background-size:280px 280px}
+@keyframes grain{0%{transform:translate(0,0)}20%{transform:translate(-18px,12px)}40%{transform:translate(14px,-16px)}60%{transform:translate(-12px,-10px)}80%{transform:translate(16px,14px)}100%{transform:translate(0,0)}}
+@keyframes pulse{0%,100%{opacity:1;transform:scale(1)}50%{opacity:.35;transform:scale(.8)}}
+.pulse{animation:pulse 1.6s ease-in-out infinite}
+@keyframes shake{10%,90%{transform:translateX(-2px)}20%,80%{transform:translateX(3px)}30%,50%,70%{transform:translateX(-5px)}40%,60%{transform:translateX(5px)}}
+.shake{animation:shake .5s both}
+.marquee-track{display:flex;width:max-content;animation:marquee var(--dur,32s) linear infinite}
+.marquee-track.rev{animation-direction:reverse}
+.marquee:hover .marquee-track{animation-play-state:paused}
+@keyframes marquee{from{transform:translateX(0)}to{transform:translateX(-50%)}}
+body.has-cursor,body.has-cursor *{cursor:none!important}
+.mask-line{display:block;overflow:hidden}
+.chars>span{display:inline-block;transform:translateY(112%);transition:transform .7s var(--e-out)}
+.is-in .chars>span{transform:translateY(0)}
+.reveal{opacity:0;transform:translateY(22px);transition:opacity .8s var(--e-out),transform .8s var(--e-out)}
+.reveal.is-in{opacity:1;transform:none}
+.ink-text{text-shadow:0 0 .4px currentColor}
+.sheet::-webkit-scrollbar{height:6px}
+@media (prefers-reduced-motion: reduce){
+ .marquee-track,.grain,.pulse{animation:none!important}
+ .chars>span{transform:none!important}
+ .reveal{opacity:1!important;transform:none!important}
+ .shake{animation:none!important}
+ *,*::before,*::after{transition-duration:.01ms!important}
+}
