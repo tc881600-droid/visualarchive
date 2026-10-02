@@ -1,6 +1,7 @@
 {
   "name": "visual-archive",
   "private": true,
+  "type": "module",
   "version": "1.0.0",
   "description": "THE VISUAL ARCHIVE — full-stack app (Vite React frontend in frontend/, Express backend in backend/, static build output in public/app/)",
   "scripts": {
